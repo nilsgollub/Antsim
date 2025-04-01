@@ -22,7 +22,7 @@ class AntState(Enum):
     ESCAPING = auto()
     PATROLLING = auto()
     DEFENDING = auto()
-    HUNTING = auto()  # NEW state for targeting prey
+    HUNTING = auto()
     TENDING_BROOD = auto()  # Placeholder
 
 
@@ -44,8 +44,8 @@ class AntCaste(Enum):
 class FoodType(Enum):
     """Defines the types of food available."""
 
-    SUGAR = 0  # Index for array access
-    PROTEIN = 1  # Index for array access
+    SUGAR = 0
+    PROTEIN = 1
 
 
 # --- Configuration Constants ---
@@ -67,11 +67,11 @@ INITIAL_FOOD_CLUSTERS = 6
 FOOD_PER_CLUSTER = 250
 FOOD_CLUSTER_RADIUS = 5
 MIN_FOOD_DIST_FROM_NEST = 30
-MAX_FOOD_PER_CELL = 100.0  # Max per type per cell
+MAX_FOOD_PER_CELL = 100.0
 INITIAL_COLONY_FOOD_SUGAR = 80.0
 INITIAL_COLONY_FOOD_PROTEIN = 80.0
-RICH_FOOD_THRESHOLD = 50.0  # Food amount per type to trigger recruitment
-CRITICAL_FOOD_THRESHOLD = 25.0 # Below this value, colony is desperate
+RICH_FOOD_THRESHOLD = 50.0
+CRITICAL_FOOD_THRESHOLD = 25.0
 
 # Obstacles
 NUM_OBSTACLES = 10
@@ -91,9 +91,9 @@ RECRUITMENT_PHEROMONE_MAX = 500.0
 
 # Weights (Influence on ant decision-making)
 W_HOME_PHEROMONE_RETURN = 45.0
-W_FOOD_PHEROMONE_SEARCH_BASE = 40.0  # Base weight for needed food type
-W_FOOD_PHEROMONE_SEARCH_LOW_NEED = 5.0  # Weight for food type NOT needed
-W_FOOD_PHEROMONE_SEARCH_AVOID = -10.0  # Weight to avoid food type if other is critical
+W_FOOD_PHEROMONE_SEARCH_BASE = 40.0
+W_FOOD_PHEROMONE_SEARCH_LOW_NEED = 5.0
+W_FOOD_PHEROMONE_SEARCH_AVOID = -10.0
 W_HOME_PHEROMONE_SEARCH = 0.0
 W_ALARM_PHEROMONE = -35.0
 W_NEST_DIRECTION_RETURN = 85.0
@@ -104,7 +104,7 @@ W_RANDOM_NOISE = 0.2
 W_NEGATIVE_PHEROMONE = -50.0
 W_RECRUITMENT_PHEROMONE = 200.0
 W_AVOID_NEST_SEARCHING = -80.0
-W_HUNTING_TARGET = 300.0  # Weight for moving towards prey target
+W_HUNTING_TARGET = 300.0
 
 # Probabilistic Choice Parameters
 PROBABILISTIC_CHOICE_TEMP = 1.0
@@ -112,14 +112,14 @@ MIN_SCORE_FOR_PROB_CHOICE = 0.01
 
 # Pheromone Drop Amounts
 P_HOME_RETURNING = 100.0
-P_FOOD_RETURNING_TRAIL = 60.0  # Specific type dropped based on carry_type
-P_FOOD_AT_SOURCE = 500.0  # Specific type dropped
+P_FOOD_RETURNING_TRAIL = 60.0
+P_FOOD_AT_SOURCE = 500.0
 P_ALARM_FIGHT = 100.0
 P_NEGATIVE_SEARCH = 10.0
 P_RECRUIT_FOOD = 400.0
 P_RECRUIT_DAMAGE = 250.0
 P_RECRUIT_DAMAGE_SOLDIER = 400.0
-P_RECRUIT_PREY = 300.0  # Recruitment pheromone dropped near killed prey
+P_RECRUIT_PREY = 300.0
 
 # --- Other Fixed Constants ---
 P_FOOD_SEARCHING = 0.0
@@ -188,7 +188,7 @@ ENEMY_TO_FOOD_ON_DEATH_SUGAR = 10.0
 ENEMY_TO_FOOD_ON_DEATH_PROTEIN = 50.0
 ENEMY_NEST_ATTRACTION = 0.05
 
-# --- Prey Parameters ---
+# Prey Parameters
 INITIAL_PREY = 5
 PREY_HP = 25
 PREY_MOVE_DELAY = 2
@@ -197,7 +197,7 @@ PROTEIN_ON_DEATH = 30.0
 PREY_COLOR = (0, 200, 0)
 PREY_FLEE_RADIUS_SQ = 5 * 5
 
-# --- Simulation Speed Control ---
+# Simulation Speed Control
 BASE_FPS = 40
 SPEED_MULTIPLIERS = [0.0, 0.1, 0.2, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 8.0, 16.0]
 TARGET_FPS_LIST = [10] + [
@@ -205,7 +205,7 @@ TARGET_FPS_LIST = [10] + [
 ]
 DEFAULT_SPEED_INDEX = SPEED_MULTIPLIERS.index(1.0)
 
-# --- Colors ---
+# Colors
 QUEEN_COLOR = (255, 0, 255)
 WORKER_ESCAPE_COLOR = (255, 165, 0)
 ENEMY_COLOR = (200, 0, 0)
@@ -266,7 +266,7 @@ def get_neighbors(pos, include_center=False):
 
 
 def distance_sq(pos1, pos2):
-    """Calculate the squared Euclidean distance between two points."""
+    """Calculate squared Euclidean distance between two points (integer)."""
     if not pos1 or not pos2:
         return float("inf")
     try:
@@ -556,7 +556,6 @@ class WorldGrid:
                 elif food_type == FoodType.PROTEIN:
                     return self.pheromones_food_protein[x, y]
                 else:
-                    # Return average or max if no type specified? Or 0? Let's return 0.
                     return 0.0
             else:
                 return 0.0
@@ -593,7 +592,7 @@ class WorldGrid:
             elif food_type == FoodType.PROTEIN:
                 target_array = self.pheromones_food_protein
             else:
-                return  # Need valid food type
+                return
 
         if target_array is not None:
             try:
@@ -653,14 +652,9 @@ class WorldGrid:
                 masked = arr * mask
                 pad = np.pad(masked, 1, mode="constant")
                 neighbors_sum = (
-                    pad[:-2, :-2]
-                    + pad[:-2, 1:-1]
-                    + pad[:-2, 2:]
-                    + pad[1:-1, :-2]
-                    + pad[1:-1, 2:]
-                    + pad[2:, :-2]
-                    + pad[2:, 1:-1]
-                    + pad[2:, 2:]
+                    pad[:-2, :-2] + pad[:-2, 1:-1] + pad[:-2, 2:] +
+                    pad[1:-1, :-2] + pad[1:-1, 2:] +
+                    pad[2:, :-2] + pad[2:, 1:-1] + pad[2:, 2:]
                 )
                 diffused = masked * (1.0 - rate) + (neighbors_sum / 8.0) * rate
                 arr[:] = np.where(mask, diffused, 0)
@@ -833,7 +827,7 @@ class Ant:
             0, WORKER_FOOD_CONSUMPTION_INTERVAL
         )
         self.last_known_alarm_pos = None
-        self.target_prey = None  # Target for hunting
+        self.target_prey = None
 
     def _update_path_history(self, new_pos_int):
         """Adds integer position to history if different, trims old entries."""
@@ -937,7 +931,6 @@ class Ant:
                 else random.choice(valid_neighbors_int)
             )
 
-        # Score moves based on current state
         move_scores = {}
         if self.state == AntState.RETURNING_TO_NEST:
             move_scores = self._score_moves_returning(
@@ -958,7 +951,6 @@ class Ant:
             self.last_move_info = f"No scores({self.state})"
             return random.choice(valid_neighbors_int)
 
-        # Select move based on strategy
         selected_move_int = None
         if self.state == AntState.RETURNING_TO_NEST:
             selected_move_int = self._select_best_move_returning(
@@ -968,7 +960,7 @@ class Ant:
             selected_move_int = self._select_best_move(
                 move_scores, valid_neighbors_int
             )
-        else:  # SEARCHING, PATROLLING
+        else:
             selected_move_int = self._select_probabilistic_move(
                 move_scores, valid_neighbors_int
             )
@@ -1057,7 +1049,7 @@ class Ant:
         else:
             if (
                 sim.colony_food_storage_sugar
-                <= sim.colony_food_storage_protein
+                <= sim.colony_food_storage_protein * 1.5
             ):
                 w_sugar = W_FOOD_PHEROMONE_SEARCH_BASE * 0.6
                 w_protein = W_FOOD_PHEROMONE_SEARCH_LOW_NEED
@@ -1239,7 +1231,7 @@ class Ant:
             return random.choice(valid_neighbors_int)
         chosen_int = random.choice(best_moves_int)
         score = move_scores.get(chosen_int, -999)
-        state_prefix = self.state.name[:3] if self.state != AntState.HUNTING else "Hunt"
+        state_prefix = self.state.name[:4] if self.state != AntState.HUNTING else "Hunt"
         self.last_move_info = f"{state_prefix} Best->{chosen_int} (S:{score:.1f})"
         return chosen_int
 
@@ -1337,11 +1329,12 @@ class Ant:
         weights = np.maximum(MIN_SCORE_FOR_PROB_CHOICE, weights)
         total_weight = np.sum(weights)
 
+        # Fallback logic for invalid weights
         if total_weight <= 1e-9 or not np.isfinite(total_weight):
             self.last_move_info += f"({self.state.name[:3]}:InvW)"
             best_s = -float("inf")
             best_p = None
-            for p_int, s in move_scores.items():
+            for p_int, s in move_scores.items(): # Corrected fallback loop
                 if s > best_s:
                     best_s = s
                     best_p = p_int
@@ -1349,6 +1342,8 @@ class Ant:
 
         probabilities = weights / total_weight
         sum_probs = np.sum(probabilities)
+
+        # Fallback logic for normalization issues
         if not np.isclose(sum_probs, 1.0):
             if sum_probs > 1e-9 and np.all(np.isfinite(probabilities)):
                 probabilities /= sum_probs
@@ -1356,7 +1351,7 @@ class Ant:
                     self.last_move_info += "(ProbNormErr)"
                     best_s = -float("inf")
                     best_p = None
-                    for p_int, s in move_scores.items():
+                    for p_int, s in move_scores.items(): # Corrected fallback loop
                         if s > best_s:
                             best_s = s
                             best_p = p_int
@@ -1365,19 +1360,20 @@ class Ant:
                 self.last_move_info += "(ProbBadSum)"
                 best_s = -float("inf")
                 best_p = None
-                for p_int, s in move_scores.items():
+                for p_int, s in move_scores.items(): # Corrected fallback loop
                     if s > best_s:
                         best_s = s
                         best_p = p_int
                 return best_p if best_p else random.choice(valid_neighbors_int)
 
+        # Fallback for final validation
         if not np.all(np.isfinite(probabilities)) or not np.isclose(
             np.sum(probabilities), 1.0
         ):
             self.last_move_info += "(ProbErrFinal)"
             best_s = -float("inf")
             best_p = None
-            for p_int, s in move_scores.items():
+            for p_int, s in move_scores.items(): # Corrected fallback loop
                 if s > best_s:
                     best_s = s
                     best_p = p_int
@@ -1394,7 +1390,7 @@ class Ant:
             self.last_move_info += "(ProbValErr)"
             best_s = -float("inf")
             best_p = None
-            for p_int, s in move_scores.items():
+            for p_int, s in move_scores.items(): # Corrected fallback loop
                 if s > best_s:
                     best_s = s
                     best_p = p_int
@@ -1403,6 +1399,7 @@ class Ant:
     def _switch_state(self, new_state: AntState, reason: str):
         """Helper to switch state and clear history/targets if needed."""
         if self.state != new_state:
+            # print(f"Ant {id(self)}: {self.state.name} -> {new_state.name} ({reason})") # Debug
             self.state = new_state
             if reason:
                 self.last_move_info = reason
@@ -1412,69 +1409,105 @@ class Ant:
             if new_state != AntState.DEFENDING:
                 self.last_known_alarm_pos = None
 
-    # --- Method definition was missing ---
     def _update_state(self):
         """Handle automatic state transitions for Soldiers and Workers."""
         sim = self.simulation
 
-        # --- Worker Hunting Logic ---
-        protein_needed = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5
+        # Worker Hunting Logic
+        protein_needed = (
+            sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5
+        )
         if (
             self.caste == AntCaste.WORKER
             and protein_needed
             and self.state == AntState.SEARCHING
             and self.carry_amount == 0
+            and not self.target_prey
         ):
-            nearby_prey = sim.find_nearby_prey(self.pos, PREY_FLEE_RADIUS_SQ * 2)
+            nearby_prey = sim.find_nearby_prey(
+                self.pos, PREY_FLEE_RADIUS_SQ * 2.5
+            )
             if nearby_prey:
-                self.target_prey = random.choice(nearby_prey)
-                self._switch_state(AntState.HUNTING, f"HuntPrey{self.target_prey.pos}")
-                return # Prioritize hunting if prey found and needed
+                nearby_prey.sort(key=lambda p: distance_sq(self.pos, p.pos))
+                self.target_prey = nearby_prey[0]
+                self._switch_state(
+                    AntState.HUNTING, f"HuntPrey@{self.target_prey.pos}"
+                )
+                return
 
-        # --- Soldier State Logic ---
+        # Soldier State Logic
         if (
-            self.caste != AntCaste.SOLDIER
-            or self.state
-            in [AntState.ESCAPING, AntState.RETURNING_TO_NEST, AntState.HUNTING]
-        ): # Don't override these states
-            return
+            self.caste == AntCaste.SOLDIER
+            and self.state
+            not in [AntState.ESCAPING, AntState.RETURNING_TO_NEST, AntState.HUNTING]
+        ):
+            pos_int = self.pos
+            nest_pos_int = tuple(map(int, NEST_POS))
+            max_alarm = 0
+            max_recruit = 0
+            search_radius_sq = 5 * 5
+            grid = sim.grid
+            x0, y0 = pos_int
+            min_scan_x = max(0, x0 - int(search_radius_sq**0.5))
+            max_scan_x = min(GRID_WIDTH - 1, x0 + int(search_radius_sq**0.5))
+            min_scan_y = max(0, y0 - int(search_radius_sq**0.5))
+            max_scan_y = min(GRID_HEIGHT - 1, y0 + int(search_radius_sq**0.5))
 
-        pos_int = self.pos
-        nest_pos_int = tuple(map(int, NEST_POS))
-        max_alarm = 0
-        max_recruit = 0
-        search_radius_sq = 5 * 5
-        grid = self.simulation.grid
-        x0, y0 = pos_int
-        min_scan_x = max(0, x0 - int(search_radius_sq**0.5))
-        max_scan_x = min(GRID_WIDTH - 1, x0 + int(search_radius_sq**0.5))
-        min_scan_y = max(0, y0 - int(search_radius_sq**0.5))
-        max_scan_y = min(GRID_HEIGHT - 1, y0 + int(search_radius_sq**0.5))
+            for i in range(min_scan_x, max_scan_x + 1):
+                for j in range(min_scan_y, max_scan_y + 1):
+                    p_int = (i, j)
+                    if distance_sq(pos_int, p_int) <= search_radius_sq:
+                        max_alarm = max(max_alarm, grid.get_pheromone(p_int, "alarm"))
+                        max_recruit = max(
+                            max_recruit, grid.get_pheromone(p_int, "recruitment")
+                        )
 
-        for i in range(min_scan_x, max_scan_x + 1):
-            for j in range(min_scan_y, max_scan_y + 1):
-                p_int = (i, j)
-                if distance_sq(pos_int, p_int) <= search_radius_sq:
-                    max_alarm = max(max_alarm, grid.get_pheromone(p_int, "alarm"))
-                    max_recruit = max(
-                        max_recruit, grid.get_pheromone(p_int, "recruitment")
+            threat_signal = max_alarm + max_recruit * 0.6
+            is_near_nest = (
+                distance_sq(pos_int, nest_pos_int) <= SOLDIER_PATROL_RADIUS_SQ
+            )
+
+            if threat_signal > SOLDIER_DEFEND_ALARM_THRESHOLD:
+                if self.state != AntState.DEFENDING:
+                    self._switch_state(AntState.DEFENDING, "ThreatHigh!")
+                return
+
+            if self.state != AntState.DEFENDING and not self.target_prey:
+                nearby_prey = sim.find_nearby_prey(
+                    self.pos, PREY_FLEE_RADIUS_SQ * 2.0
+                )
+                if nearby_prey:
+                    nearby_prey.sort(key=lambda p: distance_sq(self.pos, p.pos))
+                    self.target_prey = nearby_prey[0]
+                    self._switch_state(
+                        AntState.HUNTING, f"HuntPrey@{self.target_prey.pos}"
                     )
+                    return
 
-        threat_signal = max_alarm + max_recruit * 0.6
-        is_near_nest = distance_sq(pos_int, nest_pos_int) <= SOLDIER_PATROL_RADIUS_SQ
+            if self.state == AntState.DEFENDING:
+                self._switch_state(AntState.PATROLLING, "ThreatLow")
+            elif is_near_nest and self.state != AntState.PATROLLING:
+                self._switch_state(AntState.PATROLLING, "NearNest")
+            elif not is_near_nest and self.state == AntState.PATROLLING:
+                self._switch_state(AntState.SEARCHING, "PatrolFar")
+            elif is_near_nest and self.state == AntState.SEARCHING:
+                self._switch_state(AntState.PATROLLING, "SearchNear")
 
-        # --- State transition logic ---
-        if threat_signal > SOLDIER_DEFEND_ALARM_THRESHOLD:
-            if self.state != AntState.DEFENDING:
-                self._switch_state(AntState.DEFENDING, "ThreatHigh!")
-        elif self.state == AntState.DEFENDING:
-            self._switch_state(AntState.PATROLLING, "ThreatLow")
-        elif is_near_nest and self.state != AntState.PATROLLING:
-            self._switch_state(AntState.PATROLLING, "NearNest")
-        elif not is_near_nest and self.state == AntState.PATROLLING:
-            self._switch_state(AntState.SEARCHING, "PatrolFar")
-        elif is_near_nest and self.state == AntState.SEARCHING:
-            self._switch_state(AntState.PATROLLING, "SearchNear")
+        # Check if HUNTING target is lost (for both castes)
+        if self.state == AntState.HUNTING:
+            if (
+                not self.target_prey
+                or self.target_prey not in sim.prey
+                or distance_sq(self.pos, self.target_prey.pos)
+                > PREY_FLEE_RADIUS_SQ * 4
+            ):
+                self.target_prey = None
+                default_state = (
+                    AntState.PATROLLING
+                    if self.caste == AntCaste.SOLDIER
+                    else AntState.SEARCHING
+                )
+                self._switch_state(default_state, "LostPreyTarget")
 
     def update(self, speed_multiplier):
         """Update ant's state, position, age, food, and interactions."""
@@ -1502,7 +1535,7 @@ class Ant:
             sim.colony_food_storage_sugar -= needed_s
             sim.colony_food_storage_protein -= needed_p
 
-        # State Updates (Escape, Defend/Patrol/Hunt)
+        # State Updates
         if self.state == AntState.ESCAPING:
             self.escape_timer -= speed_multiplier
             if self.escape_timer <= 0:
@@ -1513,7 +1546,7 @@ class Ant:
                 )
                 self._switch_state(next_state, "EscapeEnd")
 
-        self._update_state() # Check for state changes based on environment
+        self._update_state()
 
         # Combat/Hunting Check
         pos_int = self.pos
@@ -1530,7 +1563,7 @@ class Ant:
                 pos_int, P_ALARM_FIGHT, "alarm"
             )
             self.stuck_timer = 0
-            self.target_prey = None # Stop hunting if enemy appears
+            self.target_prey = None
             self.last_move_info = f"Fighting Enemy {target_enemy.pos}"
             if self.state != AntState.DEFENDING:
                 self._switch_state(AntState.DEFENDING, "EnemyContact!")
@@ -1541,52 +1574,45 @@ class Ant:
             for p_int in neighbors_int
             if (p := self.simulation.get_prey_at(p_int)) and p.hp > 0
         ]
-        can_hunt = (
-            self.caste == AntCaste.WORKER
-            and self.simulation.colony_food_storage_protein
-            < CRITICAL_FOOD_THRESHOLD * 2
-        ) or (
-            self.caste == AntCaste.SOLDIER
-            and self.state in [AntState.PATROLLING, AntState.SEARCHING]
-        )
+        should_attack_prey = False
+        target_prey_to_attack = None
 
-        # Engage Prey only if not returning food and can hunt
-        if prey_in_range and can_hunt and self.state != AntState.RETURNING_TO_NEST:
-            target_prey = random.choice(prey_in_range) # Maybe target nearest?
-            # If not already hunting this specific prey, switch state
-            if self.state != AntState.HUNTING or self.target_prey != target_prey:
-                self._switch_state(AntState.HUNTING, f"TargetPrey{target_prey.pos}")
-                self.target_prey = target_prey
+        if self.state == AntState.HUNTING and self.target_prey and self.target_prey in prey_in_range:
+             if self.target_prey.pos in neighbors_int: # Check adjacency
+                 should_attack_prey = True
+                 target_prey_to_attack = self.target_prey
+        elif prey_in_range and self.state != AntState.RETURNING_TO_NEST:
+             can_hunt_opportunistically = (self.caste == AntCaste.WORKER and self.simulation.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 2) or \
+                                          (self.caste == AntCaste.SOLDIER and self.state != AntState.DEFENDING)
+             if can_hunt_opportunistically:
+                  adjacent_prey = [p for p in prey_in_range if p.pos in neighbors_int and p.pos != pos_int]
+                  prey_on_cell = [p for p in prey_in_range if p.pos == pos_int]
+                  if adjacent_prey:
+                       should_attack_prey = True
+                       target_prey_to_attack = random.choice(adjacent_prey)
+                  elif prey_on_cell:
+                       should_attack_prey = True
+                       target_prey_to_attack = random.choice(prey_on_cell)
 
-            # Attack if adjacent or on same cell
-            if target_prey.pos == pos_int or target_prey.pos in get_neighbors(pos_int, False): # Exclude center for attack adjacency check
-                self.attack(target_prey)
-                self.stuck_timer = 0
-                self.last_move_info = f"Attacking Prey {target_prey.pos}"
-                if target_prey.hp <= 0:
-                    self.simulation.kill_prey(target_prey) # Let simulation handle removal and food drop
-                    self.simulation.grid.add_pheromone(
-                        target_prey.pos, P_FOOD_AT_SOURCE, "food", FoodType.PROTEIN
-                    )
-                    self.simulation.grid.add_pheromone(
-                        target_prey.pos, P_RECRUIT_PREY, "recruitment"
-                    )
+
+        if should_attack_prey and target_prey_to_attack:
+            self.attack(target_prey_to_attack)
+            self.stuck_timer = 0
+            self.last_move_info = f"Attacking Prey {target_prey_to_attack.pos}"
+            if target_prey_to_attack.hp <= 0:
+                killed_prey_pos = target_prey_to_attack.pos
+                self.simulation.kill_prey(target_prey_to_attack)
+                self.simulation.grid.add_pheromone(
+                    killed_prey_pos, P_FOOD_AT_SOURCE, "food", FoodType.PROTEIN
+                )
+                self.simulation.grid.add_pheromone(
+                    killed_prey_pos, P_RECRUIT_PREY, "recruitment"
+                )
+                if self.target_prey == target_prey_to_attack:
                     self.target_prey = None
-                    # Decide next state after kill (e.g., return if hungry, else search)
-                    next_s = AntState.SEARCHING if self.caste == AntCaste.WORKER else AntState.PATROLLING
-                    self._switch_state(next_s, "PreyKilled")
-                return # Don't move if attacking
-
-        # Check if hunting target is lost or too far
-        if self.state == AntState.HUNTING:
-            if (
-                not self.target_prey
-                or self.target_prey not in self.simulation.prey # Check if prey still exists
-                or distance_sq(self.pos, self.target_prey.pos) > PREY_FLEE_RADIUS_SQ * 4 # Check distance
-            ):
-                self.target_prey = None
-                self._switch_state(AntState.SEARCHING, "LostPreyTarget")
-
+                next_s = AntState.SEARCHING if self.caste == AntCaste.WORKER else AntState.PATROLLING
+                self._switch_state(next_s, "PreyKilled")
+            return
 
         # Movement Delay
         if self.move_delay_timer > 0:
@@ -1648,7 +1674,7 @@ class Ant:
         grid = self.simulation.grid
         sim = self.simulation
 
-        if self.state == AntState.SEARCHING or self.state == AntState.HUNTING:
+        if self.state in [AntState.SEARCHING, AntState.HUNTING]:
             if (
                 self.caste == AntCaste.WORKER
                 and found_food_type
@@ -1679,7 +1705,7 @@ class Ant:
                             f"Picked {found_food_type.name}",
                         )
                         self.just_picked_food = True
-                        self.target_prey = None # Stop hunting if food found
+                        self.target_prey = None
                     except IndexError:
                         self.carry_amount = 0
                         self.carry_type = None
@@ -1709,30 +1735,29 @@ class Ant:
                     self.carry_type = None
 
                 next_state = AntState.SEARCHING
-                clear_history = True
-                state_reason = "SEARCH"
+                clear_history = True # Usually clear history after returning
+                state_reason = "" # Reason is built into the switch call
 
                 if self.caste == AntCaste.WORKER:
                     sugar_crit = (
                         sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD
                     )
                     protein_crit = (
-                        sim.colony_food_storage_protein
-                        < CRITICAL_FOOD_THRESHOLD
+                        sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD
                     )
-                    if sugar_crit or protein_crit:
-                        state_reason = "SEARCH(Need!)"
                     next_state = AntState.SEARCHING
                     reason_detail = f"Dropped{type_dropped.name if type_dropped else ''}({dropped_amount:.1f})"
-                    self.last_move_info = f"{reason_detail}->{state_reason}"
+                    if sugar_crit or protein_crit:
+                         state_reason = "SEARCH(Need!)"
+                    else:
+                         state_reason = "SEARCH"
+                    self._switch_state(next_state, f"{reason_detail}->{state_reason}")
 
                 elif self.caste == AntCaste.SOLDIER:
                     next_state = AntState.PATROLLING
-                    self.last_move_info = "Returned->PATROL"
+                    self._switch_state(next_state, "Returned->PATROL")
 
-                self._switch_state(next_state, "") # Reason already set above
-                if clear_history:
-                    self._clear_path_history()
+                # History clearing is handled by _switch_state
 
             elif moved and not local_just_picked:
                 if (
@@ -1759,12 +1784,13 @@ class Ant:
             )
             is_hunting_adjacent = False
             if self.state == AntState.HUNTING and self.target_prey:
-                is_hunting_adjacent = self.target_prey.pos in neighbors_int
+                is_hunting_adjacent = self.target_prey in sim.prey and self.target_prey.pos in neighbors_int
 
             if not is_fighting and not is_hunting_adjacent:
                 self._switch_state(AntState.ESCAPING, "Stuck")
                 self.escape_timer = WORKER_ESCAPE_DURATION
                 self.stuck_timer = 0
+
 
     def attack(self, target):
         """Attack either an Enemy or Prey."""
@@ -1785,6 +1811,7 @@ class Ant:
                 if self.caste == AntCaste.SOLDIER
                 else "P_RECRUIT_DAMAGE"
             )
+            # Use globals() as P_... are global constants
             grid.add_pheromone(pos_int, globals()[recruit_param], "recruitment")
         else:
             self.hp = 0
@@ -2838,7 +2865,7 @@ class AntSimulation:
                 )
                 self.screen.blit(reason_surf, reason_rect)
             except Exception:
-                pass
+                pass # Ignore font errors in dialog
             r_color = (
                 BUTTON_HOVER_COLOR
                 if restart_rect.collidepoint(mouse_pos)
@@ -2914,7 +2941,7 @@ if __name__ == "__main__":
         print(f"NumPy version: {numpy.__version__}")
     except ImportError:
         print("FATAL: NumPy required.")
-        input("Exit.")
+        input("Press Enter to Exit.")
         exit()
     try:
         import pygame
@@ -2922,11 +2949,11 @@ if __name__ == "__main__":
         print(f"Pygame version: {pygame.version.ver}")
     except ImportError as e:
         print(f"FATAL: Pygame import failed: {e}")
-        input("Exit.")
+        input("Press Enter to Exit.")
         exit()
     except Exception as e:
         print(f"FATAL: Pygame import error: {e}")
-        input("Exit.")
+        input("Press Enter to Exit.")
         exit()
 
     initialization_success = False
@@ -2935,7 +2962,7 @@ if __name__ == "__main__":
         if not pygame.display.get_init():
             raise RuntimeError("Display module failed")
         if not pygame.font.get_init():
-             raise RuntimeError("Font module failed")
+            raise RuntimeError("Font module failed")
         print("Pygame initialized successfully.")
         initialization_success = True
     except Exception as e:
@@ -2944,7 +2971,7 @@ if __name__ == "__main__":
             pygame.quit()
         except Exception:
             pass
-        input("Exit.")
+        input("Press Enter to Exit.")
         exit()
 
     if initialization_success:
@@ -2969,3 +2996,4 @@ if __name__ == "__main__":
             input("Press Enter to Exit.")
 
     print("Simulation process finished.")
+
