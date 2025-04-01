@@ -69,6 +69,7 @@ INITIAL_COLONY_FOOD_SUGAR = 200.0
 INITIAL_COLONY_FOOD_PROTEIN = 200.0
 RICH_FOOD_THRESHOLD = 50.0
 CRITICAL_FOOD_THRESHOLD = 25.0
+FOOD_REPLENISH_RATE = 1200  # Intervall in Ticks
 
 # Obstacles
 NUM_OBSTACLES = 10
@@ -600,6 +601,44 @@ class WorldGrid:
             np.clip(arr, 0, max_val, out=arr)
             arr[arr < min_pheromone_threshold] = 0
 
+    def replenish_food(self):
+        """Places new food clusters in the world."""
+        nest_pos_int = tuple(map(int, NEST_POS))
+        min_dist_sq = MIN_FOOD_DIST_FROM_NEST ** 2
+        for i in range(INITIAL_FOOD_CLUSTERS // 2):  # nur die hälfte der cluster
+            food_type_index = i % NUM_FOOD_TYPES
+            attempts = 0;
+            cx, cy = 0, 0;
+            found_spot = False
+            while attempts < 150 and not found_spot:
+                cx, cy = rnd(0, GRID_WIDTH - 1), rnd(0, GRID_HEIGHT - 1)
+                if not self.obstacles[cx, cy] and distance_sq((cx, cy), nest_pos_int) > min_dist_sq:
+                    found_spot = True
+                attempts += 1
+            if not found_spot:  # Fallback 1
+                attempts = 0
+                while attempts < 200:
+                    cx, cy = rnd(0, GRID_WIDTH - 1), rnd(0, GRID_HEIGHT - 1)
+                    if not self.obstacles[cx, cy]: found_spot = True; break
+                    attempts += 1
+            if not found_spot:  # Fallback 2
+                cx, cy = rnd(0, GRID_WIDTH - 1), rnd(0, GRID_HEIGHT - 1)
+
+            added_amount = 0.0;
+            target_food_amount = FOOD_PER_CLUSTER // 2  # nur die hälfte der nahrung
+            max_placement_attempts = int(target_food_amount * 2.5)
+            for _ in range(max_placement_attempts):
+                if added_amount >= target_food_amount: break
+                fx = cx + int(rnd_gauss(0, FOOD_CLUSTER_RADIUS / 2))
+                fy = cy + int(rnd_gauss(0, FOOD_CLUSTER_RADIUS / 2))
+                if 0 <= fx < GRID_WIDTH and 0 <= fy < GRID_HEIGHT and not self.obstacles[fx, fy]:
+                    amount_to_add = rnd_uniform(0.5, 1.0) * (MAX_FOOD_PER_CELL / 8)
+                    current_amount = self.food[fx, fy, food_type_index]
+                    new_amount = min(MAX_FOOD_PER_CELL, current_amount + amount_to_add)
+                    actual_added = new_amount - current_amount
+                    if actual_added > 0:
+                        self.food[fx, fy, food_type_index] = new_amount
+                        added_amount += actual_added
 
 # --- Prey Class ---
 class Prey:
@@ -1311,7 +1350,7 @@ class AntSimulation:
         self.colony_food_storage_sugar = 0.0; self.colony_food_storage_protein = 0.0
         self.enemy_spawn_timer = 0.0; self.enemy_spawn_interval_ticks = ENEMY_SPAWN_RATE
         self.prey_spawn_timer = 0.0; self.prey_spawn_interval_ticks = PREY_SPAWN_RATE
-        self.show_debug_info = False; self.show_legend = False # Enable legend by default
+        self.show_debug_info = True; self.show_legend = False # Enable legend by default
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
         self.buttons = self._create_buttons()
@@ -1319,7 +1358,8 @@ class AntSimulation:
         # NEW: For network streaming
         self.latest_frame_surface = None # Store the surface for the streamer thread
         self._start_streaming_server_if_enabled()
-
+        self.food_replenish_timer = 0.0
+        self.food_replenish_interval_ticks = FOOD_REPLENISH_RATE
         if self.app_running: self._reset_simulation()
 
     def _init_fonts(self):
@@ -1378,7 +1418,6 @@ class AntSimulation:
             # For more robust shutdown, might need requests to a shutdown endpoint.
             # streaming_thread.join(timeout=2) # Optional: Wait briefly
 
-
     def _reset_simulation(self):
         print(f"Resetting simulation for Kolonie {self.colony_generation + 1}...")
         self.ticks = 0.0
@@ -1417,12 +1456,12 @@ class AntSimulation:
 
         # Button-Definitionen
         button_definitions = [
-            {"text": "Debug (D)", "action": "toggle_debug", "key": pygame.K_d},
-            {"text": "Legende (L)", "action": "toggle_legend", "key": pygame.K_l},
-            {"text": "Langsam (-)", "action": "speed_down", "key": pygame.K_MINUS},
-            {"text": "Schneller (+)", "action": "speed_up", "key": pygame.K_PLUS},
-            {"text": "Neustart", "action": "restart", "key": None},
-            {"text": "Beenden", "action": "quit", "key": pygame.K_ESCAPE},
+            {"text": "Stats", "action": "toggle_debug", "key": pygame.K_d},
+            {"text": "Legend", "action": "toggle_legend", "key": pygame.K_l},
+            {"text": "Speed (-)", "action": "speed_down", "key": pygame.K_MINUS},
+            {"text": "Speed (+)", "action": "speed_up", "key": pygame.K_PLUS},
+            {"text": "Restart", "action": "restart", "key": None},
+            {"text": "Quit", "action": "quit", "key": pygame.K_ESCAPE},
         ]
 
         # --- NEW: Calculate total width of buttons ---
@@ -1640,7 +1679,11 @@ class AntSimulation:
             self.prey_spawn_timer %= self.prey_spawn_interval_ticks
             max_prey = INITIAL_PREY * 3
             if len(self.prey) < max_prey: self.spawn_prey()
-
+        # --- NEW: Food Replenishment ---
+        self.food_replenish_timer += current_multiplier
+        if self.food_replenish_timer >= self.food_replenish_interval_ticks:
+            self.food_replenish_timer %= self.food_replenish_interval_ticks
+            self.grid.replenish_food()
         # --- NEW: Frame Capture for Streaming ---
         if ENABLE_NETWORK_STREAM and Flask and streaming_thread and streaming_thread.is_alive():
             if self.latest_frame_surface: # Check if drawing happened
