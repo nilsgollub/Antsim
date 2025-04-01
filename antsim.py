@@ -63,8 +63,8 @@ FOOD_PER_CLUSTER = 250
 FOOD_CLUSTER_RADIUS = 5
 MIN_FOOD_DIST_FROM_NEST = 30
 MAX_FOOD_PER_CELL = 100.0 # Max per type per cell
-INITIAL_COLONY_FOOD_SUGAR = 80.0
-INITIAL_COLONY_FOOD_PROTEIN = 80.0
+INITIAL_COLONY_FOOD_SUGAR = 200.0
+INITIAL_COLONY_FOOD_PROTEIN = 200.0
 RICH_FOOD_THRESHOLD = 50.0 # Food amount per type to trigger recruitment
 
 # Obstacles
@@ -90,7 +90,7 @@ W_HOME_PHEROMONE_SEARCH = 0.0     # No attraction to home when searching
 W_ALARM_PHEROMONE = -35.0         # General avoidance of alarm
 W_NEST_DIRECTION_RETURN = 85.0    # Attraction to nest when returning
 W_NEST_DIRECTION_PATROL = -10.0   # Push away when patrolling inside radius
-W_ALARM_SOURCE_DEFEND = 150.0     # Strong pull to alarm source for defend state
+W_ALARM_SOURCE_DEFEND = 500.0     # Strong pull to alarm source for defend state
 W_PERSISTENCE = 1.5
 W_AVOID_HISTORY = -1000.0         # Implicitly handled by not choosing history
 W_RANDOM_NOISE = 0.2
@@ -116,7 +116,7 @@ P_RECRUIT_DAMAGE_SOLDIER = 400.0
 
 # Ant Parameters
 INITIAL_ANTS = 10
-QUEEN_HP = 600
+QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
 WORKER_MAX_AGE_STDDEV = 2000
 WORKER_PATH_HISTORY_LENGTH = 8 # Slightly shorter history
@@ -136,7 +136,7 @@ ANT_ATTRIBUTES = {
     },
     AntCaste.SOLDIER: {
         "hp": 90, "attack": 10, "capacity": 0.2, "speed_delay": 1,
-        "color": (0, 100, 255), "return_color": (255, 150, 50),
+        "color": (0, 50, 255), "return_color": (255, 150, 50),
         "food_consumption_sugar": 0.025, "food_consumption_protein": 0.01,
         "description": "Soldier", "size_factor": 2.0
     }
@@ -155,14 +155,14 @@ LARVA_FOOD_CONSUMPTION_SUGAR = 0.01
 LARVA_FEED_INTERVAL = 50
 
 # Enemy Parameters
-INITIAL_ENEMIES = 3
-ENEMY_HP = 50
+INITIAL_ENEMIES = 1
+ENEMY_HP = 60
 ENEMY_ATTACK = 10
 ENEMY_MOVE_DELAY = 4
-ENEMY_SPAWN_RATE = 500
+ENEMY_SPAWN_RATE = 1000
 ENEMY_TO_FOOD_ON_DEATH_SUGAR = 10.0
 ENEMY_TO_FOOD_ON_DEATH_PROTEIN = 50.0
-ENEMY_NEST_ATTRACTION = 0.3
+ENEMY_NEST_ATTRACTION = 0.05
 
 # --- Simulation Speed Control --- NEW Structure ---
 BASE_FPS = 40  # Target FPS for 1.0x speed
