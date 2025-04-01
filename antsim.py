@@ -164,15 +164,15 @@ ENEMY_TO_FOOD_ON_DEATH_SUGAR = 10.0
 ENEMY_TO_FOOD_ON_DEATH_PROTEIN = 50.0
 ENEMY_NEST_ATTRACTION = 0.3
 
-# Simulation Speed Control
-SPEED_LEVEL_NORMAL = 1
-SPEED_LEVELS = {
-    0: 1,     # Paused (run very slowly to keep UI responsive)
-    1: 40,    # Normal speed
-    2: 80,    # Fast (2x)
-    3: 160    # Very Fast (4x)
-}
-MAX_SPEED_LEVEL = max(SPEED_LEVELS.keys())
+# --- Simulation Speed Control --- NEW Structure ---
+BASE_FPS = 40  # Target FPS for 1.0x speed
+# Define the available speed multipliers (0.0x represents Pause)
+SPEED_MULTIPLIERS = [0.0, 0.1, 0.2, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 8.0, 16.0]
+# Calculate corresponding target FPS for each multiplier
+# Use a minimum FPS (e.g., 10) when paused (0.0x) for UI responsiveness
+TARGET_FPS_LIST = [10] + [max(1, int(m * BASE_FPS)) for m in SPEED_MULTIPLIERS[1:]]
+DEFAULT_SPEED_INDEX = SPEED_MULTIPLIERS.index(1.0) # Default to 1.0x speed
+# --- End Speed Control ---
 
 # Colors
 QUEEN_COLOR = (255, 0, 255)
@@ -195,7 +195,7 @@ PUPA_COLOR = (200, 180, 150, 220)
 BUTTON_COLOR = (80, 80, 150)
 BUTTON_HOVER_COLOR = (100, 100, 180)
 BUTTON_TEXT_COLOR = (240, 240, 240)
-BUTTON_ACTIVE_COLOR = (120, 120, 220)
+# BUTTON_ACTIVE_COLOR = (120, 120, 220) # No longer needed for speed buttons
 END_DIALOG_BG_COLOR = (0, 0, 0, 180) # Semi-transparent black for end dialog
 
 # Define aliases for random functions for brevity (optional)
@@ -239,8 +239,11 @@ def distance_sq(pos1, pos2):
     if not pos1 or not pos2 or not is_valid(pos1) or not is_valid(pos2):
         return float('inf')
     try:
-        return (pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2
-    except (TypeError, IndexError):
+        # Ensure integer positions for distance calculation if needed, or handle potential floats
+        x1, y1 = int(pos1[0]), int(pos1[1])
+        x2, y2 = int(pos2[0]), int(pos2[1])
+        return (x1 - x2)**2 + (y1 - y2)**2
+    except (TypeError, IndexError, ValueError):
         return float('inf')
 
 
@@ -285,11 +288,20 @@ class BroodItem:
 
     def update(self, current_tick, simulation):
         """Update progress, handle feeding, and check for stage transition."""
-        self.progress_timer += 1
+        # --- Simulation Speed Influence on Brood Development ---
+        # Get the current speed multiplier (avoiding 0x which means pause)
+        current_multiplier = SPEED_MULTIPLIERS[simulation.simulation_speed_index]
+        update_factor = current_multiplier if current_multiplier > 0 else 0
+
+        # Apply speed factor to progress timer increment
+        self.progress_timer += update_factor
 
         if self.stage == BroodStage.LARVA:
+            # Check feed interval based on ticks, not affected by speed multiplier directly
+            # The *rate* of checks increases with speed, but the interval is fixed in ticks
             if current_tick - self.last_feed_check >= LARVA_FEED_INTERVAL:
                 self.last_feed_check = current_tick
+                # Consumption amount could potentially scale with speed, but let's keep it fixed for now
                 needed_p = LARVA_FOOD_CONSUMPTION_PROTEIN
                 needed_s = LARVA_FOOD_CONSUMPTION_SUGAR
                 has_p = simulation.colony_food_storage_protein >= needed_p
@@ -299,19 +311,22 @@ class BroodItem:
                     simulation.colony_food_storage_protein -= needed_p
                     simulation.colony_food_storage_sugar -= needed_s
                 else:
-                    self.progress_timer -= 1 # Pause progress
+                    # If starving, pause progress by *not* adding the update_factor again
+                    # effectively negating the increment from the start of the function
+                     self.progress_timer -= update_factor
 
+        # Check against duration (duration is fixed in "standard ticks")
         if self.progress_timer >= self.duration:
             if self.stage == BroodStage.EGG:
                 self.stage = BroodStage.LARVA
-                self.progress_timer = 0
+                self.progress_timer = 0 # Reset progress
                 self.duration = LARVA_DURATION
                 self.color = LARVA_COLOR
                 self.radius = CELL_SIZE // 4
                 return None
             elif self.stage == BroodStage.LARVA:
                 self.stage = BroodStage.PUPA
-                self.progress_timer = 0
+                self.progress_timer = 0 # Reset progress
                 self.duration = PUPA_DURATION
                 self.color = PUPA_COLOR
                 self.radius = int(CELL_SIZE / 3.5)
@@ -325,13 +340,9 @@ class BroodItem:
         if not is_valid(self.pos) or self.radius <= 0:
             return
 
-        # --- MODIFICATION: Remove random offset for static drawing ---
         # Calculate the center of the cell
         center_x = int(self.pos[0]) * CELL_SIZE + CELL_SIZE // 2
         center_y = int(self.pos[1]) * CELL_SIZE + CELL_SIZE // 2
-
-        # Use a surface slightly larger than the circle for anti-aliasing effect if needed
-        # But for simplicity, draw directly onto the main surface
         draw_pos = (center_x, center_y)
 
         # Draw the main circle
@@ -342,7 +353,6 @@ class BroodItem:
             o_col = ((50, 50, 50) if self.caste == AntCaste.WORKER
                      else (100, 0, 0))
             pygame.draw.circle(surface, o_col, draw_pos, self.radius, 1)
-        # --- END MODIFICATION ---
 
 
 # --- Grid Class ---
@@ -393,7 +403,19 @@ class WorldGrid:
                         found_spot = True; break
                     attempts += 1
                 if not found_spot:
-                    cx = rnd(0, GRID_WIDTH - 1); cy = rnd(0, GRID_HEIGHT - 1)
+                    # Fallback: place anywhere not obstacle if far spot failed
+                    cx_f, cy_f = -1, -1
+                    for _ in range(50): # Try 50 times for any non-obstacle
+                        cx_try = rnd(0, GRID_WIDTH - 1)
+                        cy_try = rnd(0, GRID_HEIGHT - 1)
+                        if not self.obstacles[cx_try, cy_try]:
+                             cx_f, cy_f = cx_try, cy_try
+                             break
+                    if cx_f != -1:
+                        cx, cy = cx_f, cy_f
+                    else: # Absolute fallback: place at random even if obstacle (should be rare)
+                         cx = rnd(0, GRID_WIDTH - 1); cy = rnd(0, GRID_HEIGHT - 1)
+
 
             added = 0.0
             for _ in range(int(FOOD_PER_CLUSTER * 1.5)):
@@ -409,13 +431,17 @@ class WorldGrid:
 
     def place_obstacles(self):
         nest_area=set(); r=NEST_RADIUS+3
+        nest_center_int = tuple(map(int, NEST_POS))
         for dx in range(-r, r + 1):
             for dy in range(-r, r + 1):
-                p=(NEST_POS[0] + dx, NEST_POS[1] + dy)
-                if is_valid(p): nest_area.add(p)
-        for _ in range(NUM_OBSTACLES):
-            attempts=0; placed=False
-            while attempts<50 and not placed:
+                p=(nest_center_int[0] + dx, nest_center_int[1] + dy)
+                if is_valid(p): nest_area.add(p) # Add integer positions
+
+        placed_count = 0
+        for _ in range(NUM_OBSTACLES * 3): # Increase attempts to ensure obstacles are placed
+             if placed_count >= NUM_OBSTACLES: break
+             attempts=0; placed=False
+             while attempts<20 and not placed: # Fewer attempts per obstacle, more overall tries
                 w=rnd(MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE)
                 h=rnd(MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE)
                 x=rnd(0, GRID_WIDTH - w - 1); y=rnd(0, GRID_HEIGHT - h - 1)
@@ -425,8 +451,14 @@ class WorldGrid:
                         # Use integer coordinates for check
                         if (int(i), int(j)) in nest_area: overlaps=True; break
                     if overlaps: break
-                if not overlaps: self.obstacles[x : x + w, y : y + h] = True; placed = True
+                if not overlaps:
+                     # Ensure placement doesn't overwrite edge cases
+                     if x+w < GRID_WIDTH and y+h < GRID_HEIGHT:
+                         self.obstacles[x : x + w, y : y + h] = True
+                         placed = True
+                         placed_count += 1
                 attempts += 1
+        # print(f"Placed {placed_count}/{NUM_OBSTACLES} obstacles.") # Optional debug
 
     def is_obstacle(self, pos):
         if not is_valid(pos): return True
@@ -472,44 +504,83 @@ class WorldGrid:
             elif ph_type == 'recruitment':
                  target = self.pheromones_recruitment; max_val = RECRUITMENT_PHEROMONE_MAX
             if target is not None:
-                 target[x, y] = min(target[x, y] + amount, max_val)
+                 current_val = target[x, y]
+                 # Consider scaling deposit amount by simulation speed? Maybe not intuitive.
+                 target[x, y] = min(current_val + amount, max_val)
         except IndexError: pass # Should not happen with bounds check
 
-    def update_pheromones(self):
-        # Decay
-        self.pheromones_home *= PHEROMONE_DECAY
-        self.pheromones_food *= PHEROMONE_DECAY
-        self.pheromones_alarm *= PHEROMONE_DECAY
-        self.pheromones_negative *= NEGATIVE_PHEROMONE_DECAY
-        self.pheromones_recruitment *= RECRUITMENT_PHEROMONE_DECAY
-        # Diffusion
+    def update_pheromones(self, speed_multiplier):
+        """Update pheromones, considering simulation speed for decay/diffusion."""
+        # Adjust decay and diffusion rates based on speed multiplier
+        # If multiplier is 0, no update should happen (handled in main update loop)
+        effective_multiplier = max(0.0, speed_multiplier) # Ensure non-negative
+
+        # Decay: Apply decay more strongly if speed is higher (more time passes effectively)
+        # decay_factor = PHEROMONE_DECAY ** effective_multiplier # Exponential decay scaling
+        # Linear scaling might be more stable/predictable:
+        decay_factor_home_food_alarm = 1.0 - (1.0 - PHEROMONE_DECAY) * effective_multiplier
+        decay_factor_neg = 1.0 - (1.0 - NEGATIVE_PHEROMONE_DECAY) * effective_multiplier
+        decay_factor_recruit = 1.0 - (1.0 - RECRUITMENT_PHEROMONE_DECAY) * effective_multiplier
+
+        # Clamp decay factors to avoid negative values or > 1
+        decay_factor_home_food_alarm = min(1.0, max(0.0, decay_factor_home_food_alarm))
+        decay_factor_neg = min(1.0, max(0.0, decay_factor_neg))
+        decay_factor_recruit = min(1.0, max(0.0, decay_factor_recruit))
+
+        self.pheromones_home *= decay_factor_home_food_alarm
+        self.pheromones_food *= decay_factor_home_food_alarm
+        self.pheromones_alarm *= decay_factor_home_food_alarm
+        self.pheromones_negative *= decay_factor_neg
+        self.pheromones_recruitment *= decay_factor_recruit
+
+        # Diffusion: Apply diffusion more strongly if speed is higher
+        diffusion_rate_home_food_alarm = PHEROMONE_DIFFUSION_RATE * effective_multiplier
+        diffusion_rate_neg = NEGATIVE_PHEROMONE_DIFFUSION_RATE * effective_multiplier
+        diffusion_rate_recruit = RECRUITMENT_PHEROMONE_DIFFUSION_RATE * effective_multiplier
+
+        # Clamp diffusion rates (e.g., max 0.5 or 1.0 / 8.0 = 0.125 per step?)
+        max_diffusion = 0.12 # Avoid instability
+        diffusion_rate_home_food_alarm = min(max_diffusion, max(0.0, diffusion_rate_home_food_alarm))
+        diffusion_rate_neg = min(max_diffusion, max(0.0, diffusion_rate_neg))
+        diffusion_rate_recruit = min(max_diffusion, max(0.0, diffusion_rate_recruit))
+
         mask = ~self.obstacles
         arrays_rates = [
-            (self.pheromones_home, PHEROMONE_DIFFUSION_RATE),
-            (self.pheromones_food, PHEROMONE_DIFFUSION_RATE),
-            (self.pheromones_alarm, PHEROMONE_DIFFUSION_RATE),
-            (self.pheromones_negative, NEGATIVE_PHEROMONE_DIFFUSION_RATE),
-            (self.pheromones_recruitment, RECRUITMENT_PHEROMONE_DIFFUSION_RATE)
+            (self.pheromones_home, diffusion_rate_home_food_alarm),
+            (self.pheromones_food, diffusion_rate_home_food_alarm),
+            (self.pheromones_alarm, diffusion_rate_home_food_alarm),
+            (self.pheromones_negative, diffusion_rate_neg),
+            (self.pheromones_recruitment, diffusion_rate_recruit)
         ]
         for arr, rate in arrays_rates:
             if rate > 0:
-                masked = arr * mask; pad = np.pad(masked, 1, mode='constant')
-                neighbors = (pad[:-2, :-2] + pad[:-2, 1:-1] + pad[:-2, 2:] +
-                             pad[1:-1, :-2] + pad[1:-1, 2:] +
-                             pad[2:, :-2] + pad[2:, 1:-1] + pad[2:, 2:])
-                diffused = masked * (1 - rate) + (neighbors / 8.0) * rate
+                # Optimized diffusion using numpy operations
+                masked = arr * mask # Apply obstacle mask
+                pad = np.pad(masked, 1, mode='constant') # Pad with zeros for neighbor calculation
+
+                # Calculate sum of 8 neighbors efficiently
+                neighbors_sum = (pad[:-2, :-2] + pad[:-2, 1:-1] + pad[:-2, 2:] +
+                                 pad[1:-1, :-2]                + pad[1:-1, 2:] +
+                                 pad[2:, :-2]   + pad[2:, 1:-1]   + pad[2:, 2:])
+
+                # Update step: current value * (1-rate) + avg_neighbors * rate
+                # where avg_neighbors = neighbors_sum / 8.0
+                diffused = masked * (1.0 - rate) + (neighbors_sum / 8.0) * rate
+
+                # Apply result back, ensuring obstacles remain 0
                 arr[:] = np.where(mask, diffused, 0)
+
         # Clipping & Zeroing
-        min_ph = 0.01
+        min_ph = 0.01 # Threshold below which pheromones are set to 0
         all_arrays = [
             self.pheromones_home, self.pheromones_food, self.pheromones_alarm,
             self.pheromones_negative, self.pheromones_recruitment
         ]
         for arr in all_arrays:
             max_val = RECRUITMENT_PHEROMONE_MAX if arr is self.pheromones_recruitment else PHEROMONE_MAX
-            np.clip(arr, 0, max_val, out=arr)
-            arr[arr < min_ph] = 0
-            arr[self.obstacles] = 0
+            np.clip(arr, 0, max_val, out=arr) # Ensure values stay within [0, max_val]
+            arr[arr < min_ph] = 0 # Remove negligible amounts
+            # arr[self.obstacles] = 0 # Ensure obstacles are zero (redundant with mask logic but safe)
 
 
 # --- Entity Classes ---
@@ -522,26 +593,36 @@ class Ant:
         attrs = ANT_ATTRIBUTES[caste]
         self.hp = attrs["hp"]; self.max_hp = attrs["hp"]
         self.attack_power = attrs["attack"]; self.max_capacity = attrs["capacity"]
-        self.move_delay = attrs["speed_delay"]; self.search_color = attrs["color"]
+        self.move_delay_base = attrs["speed_delay"] # Base delay
+        self.search_color = attrs["color"]
         self.return_color = attrs["return_color"]
         self.food_consumption_sugar = attrs["food_consumption_sugar"]
         self.food_consumption_protein = attrs["food_consumption_protein"]
         self.size_factor = attrs["size_factor"]
 
         self.state = AntState.SEARCHING; self.carry_amount = 0.0; self.carry_type = None
-        self.age = 0; self.max_age = int(rnd_gauss(WORKER_MAX_AGE_MEAN, WORKER_MAX_AGE_STDDEV))
+        self.age = 0; self.max_age_ticks = int(rnd_gauss(WORKER_MAX_AGE_MEAN, WORKER_MAX_AGE_STDDEV)) # Max age in standard ticks
         # Use integer tuples for path history
-        self.path_history = []; self.history_timestamps = []; self.move_delay_timer = 0
+        self.path_history = []; self.history_timestamps = [];
+        self.move_delay_timer = 0 # Counts down frames/updates
         self.last_move_direction = (0, 0); self.stuck_timer = 0; self.escape_timer = 0
         self.last_move_info = "Born"; self.just_picked_food = False
-        self.food_consumption_timer = rnd(0, WORKER_FOOD_CONSUMPTION_INTERVAL)
+        self.food_consumption_timer = rnd(0, WORKER_FOOD_CONSUMPTION_INTERVAL) # Counts ticks
         self.last_known_alarm_pos = None
+        # Internal timer scaled by speed
+        self.age_progress_timer = 0.0
+
 
     def _update_path_history(self, new_pos):
-        t = self.simulation.ticks
+        t = self.simulation.ticks # Use simulation ticks for timestamp
         # Ensure position is integer tuple
-        self.path_history.append(tuple(map(int, new_pos)))
-        self.history_timestamps.append(t)
+        int_pos = tuple(map(int, new_pos))
+        # Avoid adding the same position multiple times consecutively
+        if not self.path_history or self.path_history[-1] != int_pos:
+            self.path_history.append(int_pos)
+            self.history_timestamps.append(t)
+
+        # Limit history length by time (WORKER_PATH_HISTORY_LENGTH represents ticks)
         cutoff = t - WORKER_PATH_HISTORY_LENGTH
         idx = 0
         while (idx < len(self.history_timestamps) and
@@ -549,6 +630,7 @@ class Ant:
             idx += 1
         self.path_history = self.path_history[idx:]
         self.history_timestamps = self.history_timestamps[idx:]
+
 
     def _is_in_history(self, pos):
         # Ensure comparison with integer tuple
@@ -564,20 +646,22 @@ class Ant:
         q_pos_int = tuple(map(int, self.simulation.queen.pos)) if self.simulation.queen else None
         # Use integer position for calculations
         pos_int = tuple(map(int, self.pos))
-        is_near_nest_now = distance_sq(pos_int, NEST_POS) <= (NEST_RADIUS + 1)**2
+        nest_pos_int = tuple(map(int, NEST_POS))
+        is_near_nest_now = distance_sq(pos_int, nest_pos_int) <= (NEST_RADIUS + 1)**2
 
         for n_pos_float in potential_neighbors:
             # Work with integer coordinates for checks
             n_pos = tuple(map(int, n_pos_float))
 
-            history_block = (
-                (not ignore_history_near_nest and self._is_in_history(n_pos)) or
-                (ignore_history_near_nest and is_near_nest_now and
-                 self._is_in_history(n_pos) and
-                 distance_sq(n_pos, NEST_POS) > NEST_RADIUS**2)
-            )
+            history_block = False
+            # Check history only if not ignoring it or if far from nest when ignoring near nest
+            check_hist = not ignore_history_near_nest or (ignore_history_near_nest and not is_near_nest_now)
+            if check_hist and self._is_in_history(n_pos):
+                 history_block = True
+
             is_queen = (n_pos == q_pos_int)
             is_obs = self.simulation.grid.is_obstacle(n_pos)
+            # Check against other ants' integer positions
             is_blocked_ant = self.simulation.is_ant_at(n_pos, exclude_self=self)
 
             if not history_block and not is_queen and not is_obs and not is_blocked_ant:
@@ -587,7 +671,7 @@ class Ant:
 
     def _choose_move(self):
         """Determine the next move based on state, goals, and environment."""
-        potential_neighbors = get_neighbors(self.pos)
+        potential_neighbors = get_neighbors(self.pos) # Gets integer neighbors
         if not potential_neighbors:
             self.last_move_info = "No neighbors"
             return None
@@ -598,33 +682,48 @@ class Ant:
 
         if not valid_neighbors:
             self.last_move_info = "Blocked"
-            # Improved fallback logic
+            # Improved fallback logic: check neighbors again, ignoring only obstacles/queen/self
             fallback_neighbors = []
             q_pos_int = tuple(map(int, self.simulation.queen.pos)) if self.simulation.queen else None
-            for n_pos_float in potential_neighbors:
-                 n_pos = tuple(map(int, n_pos_float)) # Check with ints
-                 if (n_pos != q_pos_int and
-                     not self.simulation.grid.is_obstacle(n_pos) and
-                     not self.simulation.is_ant_at(n_pos, exclude_self=self)):
-                     fallback_neighbors.append(n_pos_float) # Add original if valid
+            for n_pos_int in potential_neighbors: # Iterate through original integer neighbors
+                 if (n_pos_int != q_pos_int and
+                     not self.simulation.grid.is_obstacle(n_pos_int) and
+                     not self.simulation.is_ant_at(n_pos_int, exclude_self=self)):
+                     # Check if this int pos is NOT in history
+                     if not self._is_in_history(n_pos_int):
+                          fallback_neighbors.append(n_pos_int)
 
             if fallback_neighbors:
-                # Check history using integer tuples
-                history_fallback = [p for p in fallback_neighbors
-                                    if tuple(map(int, p)) in self.path_history]
-                if history_fallback:
-                     # Sort based on index in integer history
-                     history_fallback.sort(key=lambda p: self.path_history.index(tuple(map(int,p))))
-                     if is_valid(history_fallback[0]): return history_fallback[0]
+                # Prefer non-history fallback moves
+                return random.choice(fallback_neighbors)
+            else:
+                 # If all valid fallbacks are in history, allow moving back (less strict fallback)
+                 fallback_neighbors_incl_history = []
+                 for n_pos_int in potential_neighbors:
+                     if (n_pos_int != q_pos_int and
+                         not self.simulation.grid.is_obstacle(n_pos_int) and
+                         not self.simulation.is_ant_at(n_pos_int, exclude_self=self)):
+                         fallback_neighbors_incl_history.append(n_pos_int)
+                 if fallback_neighbors_incl_history:
+                      # Try moving to the least recently visited position
+                      fallback_neighbors_incl_history.sort(key=lambda p: self.path_history.index(p) if p in self.path_history else -1)
+                      return fallback_neighbors_incl_history[0]
 
-                non_hist_fallback = [p for p in fallback_neighbors
-                                     if tuple(map(int, p)) not in self.path_history]
-                if non_hist_fallback: return random.choice(non_hist_fallback)
-                elif fallback_neighbors: return random.choice(fallback_neighbors)
-            return None # Truly stuck
+            return None # Truly stuck if no non-obstacle/non-queen/non-ant neighbor exists
 
         if self.state == AntState.ESCAPING:
-            return random.choice(valid_neighbors) if valid_neighbors else None
+            # Prioritize moving away from the current position, ignore history strongly
+            escape_moves = []
+            pos_int = tuple(map(int, self.pos))
+            for n_pos in valid_neighbors: # valid_neighbors contains original tuples
+                n_pos_int = tuple(map(int, n_pos))
+                if n_pos_int != pos_int and not self._is_in_history(n_pos_int):
+                    escape_moves.append(n_pos)
+            if escape_moves:
+                 return random.choice(escape_moves)
+            else: # Fallback: any valid move if no non-history move away exists
+                 return random.choice(valid_neighbors)
+
 
         # Score moves based on state
         move_scores = {}
@@ -641,7 +740,9 @@ class Ant:
 
         if not move_scores:
             self.last_move_info = f"No scores({self.state})"
+            # Fallback: random valid move if scoring fails
             return random.choice(valid_neighbors) if valid_neighbors else None
+
 
         # Select move based on strategy
         if self.state == AntState.RETURNING_TO_NEST:
@@ -657,8 +758,10 @@ class Ant:
         pos_int = tuple(map(int, self.pos))
         n_pos_int = tuple(map(int, neighbor_pos))
         move_dir = (n_pos_int[0] - pos_int[0], n_pos_int[1] - pos_int[1])
-        if move_dir == self.last_move_direction:
+        # Encourage moving in the same direction slightly
+        if move_dir == self.last_move_direction and move_dir != (0,0):
             score += W_PERSISTENCE
+        # Add random noise for exploration
         score += rnd_uniform(-W_RANDOM_NOISE, W_RANDOM_NOISE)
         return score
 
@@ -666,83 +769,104 @@ class Ant:
         scores = {}
         # Use integer position for distance calculation
         pos_int = tuple(map(int, self.pos))
-        dist_sq_now = distance_sq(pos_int, NEST_POS)
+        nest_pos_int = tuple(map(int, NEST_POS))
+        dist_sq_now = distance_sq(pos_int, nest_pos_int)
         grid = self.simulation.grid
-        for n_pos in valid_neighbors: # n_pos is original tuple (can be float)
+        for n_pos in valid_neighbors: # n_pos is original tuple
             score = 0.0
-            n_pos_int = tuple(map(int, n_pos)) # Use int for grid access
+            n_pos_int = tuple(map(int, n_pos)) # Use int for grid access/distance
             home_ph = grid.get_pheromone(n_pos_int, 'home')
             food_ph = grid.get_pheromone(n_pos_int, 'food')
             alarm_ph = grid.get_pheromone(n_pos_int, 'alarm')
+            neg_ph = grid.get_pheromone(n_pos_int, 'negative') # Consider negative trails
 
+            # Strong pull towards home pheromone and nest direction
             score += home_ph * W_HOME_PHEROMONE_RETURN
-            # Use int for distance check
-            if distance_sq(n_pos_int, NEST_POS) < dist_sq_now:
+            if distance_sq(n_pos_int, nest_pos_int) < dist_sq_now:
                 score += W_NEST_DIRECTION_RETURN
 
-            if just_picked:
-                score -= food_ph * W_FOOD_PHEROMONE_SEARCH * 0.5 # Avoid food source
-                score += alarm_ph * W_ALARM_PHEROMONE * 0.3 # Less penalty
-            else:
-                score += alarm_ph * W_ALARM_PHEROMONE * 0.1 # Normal reduced penalty
+            # Avoid alarm/negative pheromones (less penalty than searching)
+            score += alarm_ph * W_ALARM_PHEROMONE * 0.2
+            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.3
 
-            score += self._score_moves_base(n_pos) # Pass original tuple
+            # If just picked food, slightly avoid the food source pheromone trail immediately
+            if just_picked:
+                score -= food_ph * W_FOOD_PHEROMONE_SEARCH * 0.3
+
+            score += self._score_moves_base(n_pos) # Add base score (persistence, noise)
             scores[n_pos] = score
         return scores
 
     def _score_moves_searching(self, valid_neighbors):
         scores = {}
         grid = self.simulation.grid
+        pos_int = tuple(map(int, self.pos)) # Current int position
+        nest_pos_int = tuple(map(int, NEST_POS))
+
         for n_pos in valid_neighbors:
             score = 0.0
-            n_pos_int = tuple(map(int, n_pos)) # Use int for grid access
-            home_ph = grid.get_pheromone(n_pos_int, 'home')
+            n_pos_int = tuple(map(int, n_pos)) # Use int for grid access/distance
+            home_ph = grid.get_pheromone(n_pos_int, 'home') # Read home pheromone
             food_ph = grid.get_pheromone(n_pos_int, 'food')
             neg_ph = grid.get_pheromone(n_pos_int, 'negative')
             alarm_ph = grid.get_pheromone(n_pos_int, 'alarm')
             recr_ph = grid.get_pheromone(n_pos_int, 'recruitment')
 
-            food_w = (W_FOOD_PHEROMONE_SEARCH if self.caste == AntCaste.WORKER
-                      else W_FOOD_PHEROMONE_SEARCH * 0.2)
-            score += food_ph * food_w
-            # score += home_ph * W_HOME_PHEROMONE_SEARCH # W is 0
+            # Worker ants strongly follow food/recruitment pheromones
+            food_weight = W_FOOD_PHEROMONE_SEARCH
+            recruit_weight = W_RECRUITMENT_PHEROMONE
+            # Soldiers are less interested in food, more in recruitment/alarm
+            if self.caste == AntCaste.SOLDIER:
+                 food_weight *= 0.1
+                 recruit_weight *= 1.2 # Slightly more responsive to recruitment
+
+            score += food_ph * food_weight
+            score += recr_ph * recruit_weight
+
+            # Avoid negative, alarm, and home pheromones when searching
             score += neg_ph * W_NEGATIVE_PHEROMONE
             score += alarm_ph * W_ALARM_PHEROMONE
-            score += recr_ph * W_RECRUITMENT_PHEROMONE
+            score += home_ph * W_HOME_PHEROMONE_SEARCH # Currently 0, but could be negative
 
-            # Use int for distance check
-            if distance_sq(n_pos_int, NEST_POS) <= (NEST_RADIUS * 1.5)**2:
-                 score += W_AVOID_NEST_SEARCHING # Stronger penalty
+            # Penalty for being too close to the nest center while searching
+            if distance_sq(n_pos_int, nest_pos_int) <= (NEST_RADIUS * 1.5)**2:
+                 score += W_AVOID_NEST_SEARCHING # Negative weight
 
-            score += self._score_moves_base(n_pos) # Pass original tuple
+            score += self._score_moves_base(n_pos) # Add base score (persistence, noise)
             scores[n_pos] = score
         return scores
 
     def _score_moves_patrolling(self, valid_neighbors):
         scores = {}
         grid = self.simulation.grid
-        pos_int = tuple(map(int, self.pos)) # Use int for distance
-        dist_sq_current = distance_sq(pos_int, NEST_POS)
+        pos_int = tuple(map(int, self.pos)) # Use int for distance/grid
+        nest_pos_int = tuple(map(int, NEST_POS))
+        dist_sq_current = distance_sq(pos_int, nest_pos_int)
+
         for n_pos in valid_neighbors:
             score = 0.0
             n_pos_int = tuple(map(int, n_pos)) # Use int for grid/distance
             neg_ph = grid.get_pheromone(n_pos_int, 'negative')
             alarm_ph = grid.get_pheromone(n_pos_int, 'alarm')
-            recr_ph = grid.get_pheromone(n_pos_int, 'recruitment')
+            recr_ph = grid.get_pheromone(n_pos_int, 'recruitment') # Follow recruitment if nearby
 
-            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.5
-            score += alarm_ph * W_ALARM_PHEROMONE * 0.5
-            score += recr_ph * W_RECRUITMENT_PHEROMONE
+            # Follow recruitment, avoid negative/alarm slightly less than searching
+            score += recr_ph * W_RECRUITMENT_PHEROMONE * 0.8
+            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.6
+            score += alarm_ph * W_ALARM_PHEROMONE * 0.4
 
-            dist_sq_next = distance_sq(n_pos_int, NEST_POS)
-            if dist_sq_current <= (NEST_RADIUS * 2)**2:
+            dist_sq_next = distance_sq(n_pos_int, nest_pos_int)
+
+            # Encourage moving away from nest center if inside patrol radius
+            if dist_sq_current <= SOLDIER_PATROL_RADIUS_SQ:
                  if dist_sq_next > dist_sq_current:
                      score -= W_NEST_DIRECTION_PATROL # W is negative -> push away
 
-            if dist_sq_next > SOLDIER_PATROL_RADIUS_SQ:
-                 score -= 10000 # Heavy penalty
+            # Heavy penalty for moving outside the maximum patrol radius
+            if dist_sq_next > (SOLDIER_PATROL_RADIUS_SQ * 1.5): # Allow slight overshoot
+                 score -= 5000 # Strong penalty
 
-            score += self._score_moves_base(n_pos) # Pass original tuple
+            score += self._score_moves_base(n_pos) # Add base score (persistence, noise)
             scores[n_pos] = score
         return scores
 
@@ -751,366 +875,551 @@ class Ant:
         grid = self.simulation.grid
         pos_int = tuple(map(int, self.pos)) # Use int for calcs
 
-        if self.last_known_alarm_pos is None or random.random() < 0.1: # Update target
-            best_pos = None; max_alarm = -1; r_sq = 5*5
-            x0, y0 = pos_int # Use int pos
+        # --- Target Acquisition / Update ---
+        # If no target or randomly (to re-evaluate), find strongest alarm/recruit nearby
+        if self.last_known_alarm_pos is None or random.random() < 0.15:
+            best_pos = None
+            max_signal = -1
+            radius_sq = 5*5 # Search radius squared
+            x0, y0 = pos_int # Search around current int pos
+
+            potential_targets = []
             for i in range(x0 - 2, x0 + 3):
                  for j in range(y0 - 2, y0 + 3):
                       p = (i, j)
-                      if distance_sq(pos_int, p) <= r_sq and is_valid(p):
-                           alarm = grid.get_pheromone(p, 'alarm') # Use int pos p
-                           if alarm > max_alarm:
-                               max_alarm = alarm; best_pos = p # Store int pos p
-            self.last_known_alarm_pos = best_pos # Store int pos
+                      # Check distance and validity
+                      if distance_sq(pos_int, p) <= radius_sq and is_valid(p):
+                           # Combine alarm and recruitment signals for target score
+                           signal = (grid.get_pheromone(p, 'alarm') +
+                                     grid.get_pheromone(p, 'recruitment') * 0.5) # Prioritize alarm
+                           # Check if an enemy is also at this location
+                           enemy_here = self.simulation.get_enemy_at(p)
+                           if enemy_here:
+                                signal += 500 # Heavily prioritize moving towards enemies
 
+                           if signal > max_signal:
+                               max_signal = signal
+                               best_pos = p # Store int pos p
+
+            # Update target only if a significant signal was found
+            if max_signal > 50.0: # Threshold to avoid chasing noise
+                 self.last_known_alarm_pos = best_pos # Store int pos
+            else:
+                 self.last_known_alarm_pos = None # Lose target if signal weak
+
+        # --- Score Moves based on Target ---
         for n_pos in valid_neighbors:
             score = 0.0
             n_pos_int = tuple(map(int, n_pos)) # Use int pos
             alarm_ph = grid.get_pheromone(n_pos_int, 'alarm')
             recr_ph = grid.get_pheromone(n_pos_int, 'recruitment')
+            enemy_at_n_pos = self.simulation.get_enemy_at(n_pos_int)
 
+            # Very high score for moving onto a cell with an enemy
+            if enemy_at_n_pos:
+                 score += 10000
+
+            # If has a target position, score moving closer higher
             if self.last_known_alarm_pos: # This is an int tuple
-                 dist_now = distance_sq(pos_int, self.last_known_alarm_pos)
-                 dist_next = distance_sq(n_pos_int, self.last_known_alarm_pos)
-                 if dist_next < dist_now:
-                     score += W_ALARM_SOURCE_DEFEND
+                 dist_now_sq = distance_sq(pos_int, self.last_known_alarm_pos)
+                 dist_next_sq = distance_sq(n_pos_int, self.last_known_alarm_pos)
+                 if dist_next_sq < dist_now_sq:
+                     score += W_ALARM_SOURCE_DEFEND # Strong pull towards target
 
-            score += alarm_ph * W_ALARM_PHEROMONE * -0.5 # Follow alarm up
-            score += recr_ph * W_RECRUITMENT_PHEROMONE * 1.5 # Follow recruitment
+            # General attraction to alarm and recruitment pheromones
+            score += alarm_ph * W_ALARM_PHEROMONE * -0.8 # Follow alarm strongly (W_ALARM is negative)
+            score += recr_ph * W_RECRUITMENT_PHEROMONE * 1.2 # Follow recruitment strongly
 
-            score += self._score_moves_base(n_pos) # Pass original tuple
+            score += self._score_moves_base(n_pos) # Add base score (persistence, noise)
             scores[n_pos] = score
         return scores
+
 
     def _select_best_move(self, move_scores, valid_neighbors):
         """Selects the move with the highest score (for DEFEND)."""
         best_score = -float('inf'); best_moves = []
-        for pos, score in move_scores.items():
+        for pos, score in move_scores.items(): # pos is original tuple
             if score > best_score: best_score = score; best_moves = [pos]
             elif score == best_score: best_moves.append(pos)
 
         if not best_moves:
-            self.last_move_info += "(No best?)"
+            self.last_move_info += "(Def:No best?)"
             return random.choice(valid_neighbors) if valid_neighbors else None
 
-        chosen = random.choice(best_moves)
+        chosen = random.choice(best_moves) # Choose randomly among the best
         score = move_scores.get(chosen, -999)
-        # Display chosen position (can be float)
-        self.last_move_info = f"Best->({chosen[0]:.1f},{chosen[1]:.1f}) (S:{score:.1f})"
-        return chosen
+        chosen_int = tuple(map(int, chosen))
+        self.last_move_info = f"Def Best->{chosen_int} (S:{score:.1f})"
+        return chosen # Return original tuple
 
     def _select_best_move_returning(self, move_scores, valid_neighbors, just_picked):
         """Selects the best move for returning, prioritizing nest direction."""
         best_score = -float('inf'); best_moves = []
         pos_int = tuple(map(int, self.pos)) # Use int for distance
-        dist_sq_now = distance_sq(pos_int, NEST_POS)
+        nest_pos_int = tuple(map(int, NEST_POS))
+        dist_sq_now = distance_sq(pos_int, nest_pos_int)
         closer_moves = {}; other_moves = {}
-        for pos, score in move_scores.items():
+
+        # Separate moves into those getting closer to the nest and others
+        for pos, score in move_scores.items(): # pos is original tuple
             # Use int for distance check
-            if distance_sq(tuple(map(int, pos)), NEST_POS) < dist_sq_now:
+            if distance_sq(tuple(map(int, pos)), nest_pos_int) < dist_sq_now:
                 closer_moves[pos] = score
             else:
                 other_moves[pos] = score
 
         target_pool = {}; selection_type = ""
+        # Prioritize moves that get closer
         if closer_moves: target_pool = closer_moves; selection_type = "Closer"
         elif other_moves: target_pool = other_moves; selection_type = "Other"
         else:
+            # If no moves possible (shouldn't happen if valid_neighbors exists), fallback
             self.last_move_info += "(R: No moves?)"
             return random.choice(valid_neighbors) if valid_neighbors else None
 
+        # Find the best score within the prioritized pool
         for pos, score in target_pool.items():
             if score > best_score: best_score = score; best_moves = [pos]
             elif score == best_score: best_moves.append(pos)
 
+        # Handle cases where the prioritized pool yields no best move (unlikely)
         if not best_moves:
             self.last_move_info += f"(R: No best in {selection_type})"
-            target_pool = move_scores # Fallback to all scores
+            # Fallback to considering all original valid moves if priority pool failed
+            target_pool = move_scores
             best_score = -float('inf'); best_moves = []
             for pos, score in target_pool.items():
                  if score > best_score: best_score = score; best_moves = [pos]
                  elif score == best_score: best_moves.append(pos)
+            # If still no best move, choose randomly from valid neighbors
             if not best_moves: return random.choice(valid_neighbors) if valid_neighbors else None
 
+        # Select the final move
         if len(best_moves) == 1:
             chosen = best_moves[0]
-            self.last_move_info = f"R({selection_type})Best->({chosen[0]:.1f},{chosen[1]:.1f}) (S:{best_score:.1f})"
+            chosen_int = tuple(map(int, chosen))
+            self.last_move_info = f"R({selection_type})Best->{chosen_int} (S:{best_score:.1f})"
         else:
-            # Tie-break by home pheromone (use int pos for grid access)
+            # Tie-break: Use home pheromone concentration
             best_moves.sort(key=lambda p: self.simulation.grid.get_pheromone(tuple(map(int,p)),'home'), reverse=True)
+            # Get max pheromone value among tied moves
             max_ph = self.simulation.grid.get_pheromone(tuple(map(int,best_moves[0])),'home')
-            top_ph = [p for p in best_moves if self.simulation.grid.get_pheromone(tuple(map(int,p)),'home') == max_ph]
-            chosen = random.choice(top_ph)
-            self.last_move_info = f"R({selection_type})TieBrk->({chosen[0]:.1f},{chosen[1]:.1f}) (S:{best_score:.1f})"
-        return chosen
+            # Select randomly from those with the max pheromone value
+            top_ph_moves = [p for p in best_moves if self.simulation.grid.get_pheromone(tuple(map(int,p)),'home') == max_ph]
+            chosen = random.choice(top_ph_moves)
+            chosen_int = tuple(map(int, chosen))
+            self.last_move_info = f"R({selection_type})TieBrk->{chosen_int} (S:{best_score:.1f})"
+
+        return chosen # Return original tuple
+
 
     def _select_probabilistic_move(self, move_scores, valid_neighbors):
         """Selects a move probabilistically based on scores."""
-        pop=list(move_scores.keys()); scores=np.array(list(move_scores.values()))
-        if len(pop)==0: return None
+        if not move_scores: # Handle empty scores dictionary
+             return random.choice(valid_neighbors) if valid_neighbors else None
 
-        min_s = np.min(scores) if scores.size>0 else 0
-        # Add a small epsilon to avoid issues with zero scores after shift
-        shifted = scores - min_s + 0.01 # Changed epsilon slightly
-        # Clamp temperature effect to avoid extreme weights
-        weights = np.power(shifted, min(max(PROBABILISTIC_CHOICE_TEMP, 0.1), 5.0))
+        pop = list(move_scores.keys()) # Original tuples
+        scores = np.array(list(move_scores.values()))
+
+        if len(pop) == 0: return None
+
+        min_s = np.min(scores) if scores.size > 0 else 0
+        # Shift scores to be non-negative, add epsilon for stability
+        shifted_scores = scores - min_s + 0.01
+
+        # Apply temperature scaling (clamped for stability)
+        temp = min(max(PROBABILISTIC_CHOICE_TEMP, 0.1), 5.0)
+        weights = np.power(shifted_scores, temp)
+
+        # Ensure weights are not too small (helps avoid division by zero)
         weights = np.maximum(MIN_SCORE_FOR_PROB_CHOICE, weights)
-        total = np.sum(weights)
 
-        # Handle cases where total is zero or invalid
-        if total <= 1e-9 or not np.isfinite(total):
-            self.last_move_info += f"({self.state.name[:3]}:LowW/Inv)"
+        total_weight = np.sum(weights)
+
+        # Handle invalid total weight (zero, NaN, Inf)
+        if total_weight <= 1e-9 or not np.isfinite(total_weight):
+            self.last_move_info += f"({self.state.name[:3]}:InvW)"
+            # Fallback: Choose best score deterministically if weights failed
+            best_s = -float('inf'); best_p = None
+            for p, s in move_scores.items():
+                if s > best_s: best_s = s; best_p = p
+            if best_p: return best_p
+            # If even that fails, random choice
             return random.choice(valid_neighbors) if valid_neighbors else None
 
-        probs = weights / total
-        # Check for NaN/inf in probs and handle normalization issues
-        if not np.all(np.isfinite(probs)):
-            self.last_move_info += "(ProbNaN/Inf)"
-            # Fallback: Equal probability
-            if valid_neighbors: return random.choice(valid_neighbors)
-            else: return None
+        # Calculate probabilities
+        probabilities = weights / total_weight
 
-        # Renormalize if needed due to potential floating point inaccuracies
-        sum_probs = np.sum(probs)
-        if abs(sum_probs - 1.0) > 1e-6:
-            if sum_probs > 1e-9: probs /= sum_probs
-            else: # If sum is still near zero, fallback to equal probability
-                 self.last_move_info += "(ProbSumLow)"
-                 if valid_neighbors: return random.choice(valid_neighbors)
-                 else: return None
+        # Renormalize if sum is not close to 1.0 (due to float precision)
+        sum_probs = np.sum(probabilities)
+        if not np.isclose(sum_probs, 1.0):
+            if sum_probs > 1e-9:
+                probabilities /= sum_probs
+            else: # If sum is still ~zero, probabilities are ill-defined
+                self.last_move_info += "(ProbSumLow)"
+                best_s = -float('inf'); best_p = None
+                for p, s in move_scores.items():
+                    if s > best_s: best_s = s; best_p = p
+                if best_p: return best_p
+                return random.choice(valid_neighbors) if valid_neighbors else None
 
-        # Final check on probability sum
-        if abs(np.sum(probs) - 1.0) > 1e-6:
-             self.last_move_info += "(ProbSumErrFinal)"
-             if valid_neighbors: return random.choice(valid_neighbors)
-             else: return None
+        # Final check for valid probabilities (sum ~ 1.0, no NaN/Inf)
+        if not np.all(np.isfinite(probabilities)) or not np.isclose(np.sum(probabilities), 1.0):
+             self.last_move_info += "(ProbErrFinal)"
+             best_s = -float('inf'); best_p = None
+             for p, s in move_scores.items():
+                 if s > best_s: best_s = s; best_p = p
+             if best_p: return best_p
+             return random.choice(valid_neighbors) if valid_neighbors else None
+
 
         try:
-            idx = np.random.choice(len(pop), p=probs)
-            chosen = pop[idx]
+            # Choose index based on calculated probabilities
+            chosen_index = np.random.choice(len(pop), p=probabilities)
+            chosen = pop[chosen_index] # Get the chosen original tuple
             score = move_scores.get(chosen, -999)
-            self.last_move_info = f"{self.state.name[:3]} Prob->({chosen[0]:.1f},{chosen[1]:.1f}) (S:{score:.1f})"
-            return chosen
+            chosen_int = tuple(map(int, chosen))
+            self.last_move_info = f"{self.state.name[:3]} Prob->{chosen_int} (S:{score:.1f})"
+            return chosen # Return original tuple
         except ValueError as e:
-            # This often happens if probs don't sum to 1 *exactly* due to float issues
-            print(f"Err choices ({self.state}): {e}. Sum={np.sum(probs)}, Probs={probs}")
+            # This error (often "probabilities do not sum to 1") can still occur with tiny float differences
+            print(f"WARN choices ({self.state}): {e}. Sum={np.sum(probabilities)}")
             self.last_move_info += "(ProbValErr)"
-            # Fallback to max score if possible, otherwise random
-            max_s = -float('inf')
-            best_choice = None
+            # Fallback: Choose the move with the highest score deterministically
+            best_s = -float('inf'); best_p = None
             for p, s in move_scores.items():
-                if s > max_s: max_s=s; best_choice=p
-            if best_choice: return best_choice
-            elif valid_neighbors: return random.choice(valid_neighbors)
-            else: return None
+                if s > best_s: best_s = s; best_p = p
+            if best_p: return best_p
+            # If that fails, choose randomly
+            return random.choice(valid_neighbors) if valid_neighbors else None
 
-    def update(self):
+
+    def update(self, speed_multiplier):
         """Update ant's state, position, age, food, and interactions."""
-        self.age += 1
 
-        # Food Consumption
-        self.food_consumption_timer += 1
+        # --- Aging ---
+        # Increment internal age timer by the speed multiplier
+        self.age_progress_timer += speed_multiplier
+        # Increment actual age only when the progress timer crosses an integer threshold
+        if self.age_progress_timer >= 1.0:
+            self.age += int(self.age_progress_timer) # Add whole ticks passed
+            self.age_progress_timer %= 1.0 # Keep the fractional part
+
+        # Death from old age check (based on standard ticks)
+        if self.age >= self.max_age_ticks:
+            self.hp = 0
+            self.last_move_info = "Died of old age"
+            return # Dies in pre-update check next cycle
+
+
+        # --- Food Consumption ---
+        # Timer counts standard ticks
+        self.food_consumption_timer += speed_multiplier
         if self.food_consumption_timer >= WORKER_FOOD_CONSUMPTION_INTERVAL:
-            self.food_consumption_timer = 0
+            self.food_consumption_timer %= WORKER_FOOD_CONSUMPTION_INTERVAL # Reset timer keeping remainder
             needed_s = self.food_consumption_sugar
             needed_p = self.food_consumption_protein
             sim = self.simulation
-            if sim.colony_food_storage_sugar >= needed_s and sim.colony_food_storage_protein >= needed_p:
+            # Check if enough food is available in colony storage
+            has_s = sim.colony_food_storage_sugar >= needed_s
+            has_p = sim.colony_food_storage_protein >= needed_p
+
+            if has_s and has_p:
+                # Consume food from colony storage
                 sim.colony_food_storage_sugar -= needed_s
                 sim.colony_food_storage_protein -= needed_p
             else:
+                # Starvation: Set HP to 0, will be removed in next pre-update check
                 self.hp = 0
                 self.last_move_info = "Starved"
-                return # Dies next cycle
+                return # Skip rest of update for this tick
 
-        # Handle escape state countdown
+
+        # --- State Updates (Escape Timer) ---
         if self.state == AntState.ESCAPING:
-            self.escape_timer -= 1
+            # Escape timer decreases based on speed multiplier
+            self.escape_timer -= speed_multiplier
             if self.escape_timer <= 0:
+                # Transition back to normal state (Patrolling for Soldier, Searching for Worker)
                 next_state = (AntState.PATROLLING if self.caste == AntCaste.SOLDIER
                               else AntState.SEARCHING)
                 self.state = next_state
                 self.last_move_info = f"EscapeEnd->{next_state.name[:3]}"
-                # Don't clear path history here, might be useful
+                # History is already cleared when escape starts
 
-        self._update_state() # Update state (Patrolling/Defending) - AFTER escape check
+        # Update state based on environment (Patrolling/Defending for Soldiers)
+        # This happens regardless of escape timer state (e.g., can switch from P->D)
+        self._update_state()
 
-        # Combat Check
+
+        # --- Combat Check ---
         pos_int = tuple(map(int, self.pos)) # Use int pos
-        # Check neighbors using integer coordinates
-        neighbors_int = get_neighbors(pos_int, True)
-        enemies = [e for p_int in neighbors_int
-                   if (e := self.simulation.get_enemy_at(p_int)) and e.hp > 0]
-        if enemies:
-            target = random.choice(enemies)
-            self.attack(target)
-            # Add pheromone at integer position
-            self.simulation.grid.add_pheromone(pos_int, P_ALARM_FIGHT, 'alarm')
-            self.stuck_timer = 0
-            target_pos_int = tuple(map(int, target.pos)) # Use int pos
-            self.last_move_info = f"Fighting {self.caste.name} vs {target_pos_int}"
-            return # Don't move if fighting
+        # Check integer neighbors for enemies
+        neighbors_int = get_neighbors(pos_int, True) # Include center
+        enemies_in_range = [e for p_int in neighbors_int
+                            if (e := self.simulation.get_enemy_at(p_int)) and e.hp > 0]
 
-        # Movement Delay & Execution
+        if enemies_in_range:
+            target_enemy = random.choice(enemies_in_range)
+            self.attack(target_enemy)
+            # Add alarm pheromone at integer position
+            self.simulation.grid.add_pheromone(pos_int, P_ALARM_FIGHT, 'alarm')
+            self.stuck_timer = 0 # Reset stuck timer when fighting
+            target_pos_int = tuple(map(int, target_enemy.pos)) # Use int pos
+            self.last_move_info = f"Fighting {self.caste.name} vs {target_pos_int}"
+            # No movement occurs this update cycle if fighting
+            return
+
+
+        # --- Movement ---
+        # Movement Delay: Timer counts down each update cycle
         if self.move_delay_timer > 0:
             self.move_delay_timer -= 1
-            return
-        self.move_delay_timer = self.move_delay
+            return # Skip movement if delay active
 
-        old_pos = self.pos # Store original (float?) tuple
-        local_just_picked = self.just_picked_food
-        self.just_picked_food = False # Reset before decision
+        # Calculate actual delay based on base delay and speed multiplier
+        # Higher speed means less delay between moves (minimum 1 update cycle per move)
+        # Inverse relationship: delay_updates = base_delay / speed_multiplier
+        # But simpler: move every `max(1, round(base_delay / speed_multiplier))` updates?
+        # Or: Apply delay only if base_delay > 0
+        effective_delay = 0
+        if self.move_delay_base > 0 and speed_multiplier > 0:
+             # Calculate how many update cycles constitute the base delay at current speed
+             effective_delay = max(0, int(round(self.move_delay_base / speed_multiplier)) -1) # -1 because 1 cycle is the current move
+        elif self.move_delay_base > 0 and speed_multiplier == 0:
+             effective_delay = float('inf') # Infinite delay if paused
 
-        new_pos_cand = self._choose_move() # Returns original tuple type
-        moved = False; found_food_type = None; food_amount = 0.0
 
-        if new_pos_cand and tuple(map(int, new_pos_cand)) != tuple(map(int, old_pos)):
+        # Set the timer for the *next* move delay
+        self.move_delay_timer = effective_delay
+
+
+        # --- Choose and Execute Move ---
+        old_pos = self.pos # Store original (potentially float) tuple
+        local_just_picked = self.just_picked_food # Store state before move decision
+        self.just_picked_food = False # Reset flag before decision
+
+        new_pos_cand = self._choose_move() # Returns original tuple type (or None)
+        moved = False
+        found_food_type = None
+        food_amount = 0.0
+
+        if new_pos_cand:
             target = new_pos_cand # Keep original type
-            self.pos = target
-            # Calculate direction based on integer positions
-            old_pos_int = tuple(map(int, old_pos))
             target_int = tuple(map(int, target))
-            self.last_move_direction = (target_int[0] - old_pos_int[0], target_int[1] - old_pos_int[1])
-            self._update_path_history(target_int) # Use int pos for history
-            self.stuck_timer = 0
-            moved = True
-            try: # Check food at new integer position
-                x_int, y_int = target_int
-                foods = self.simulation.grid.food[x_int, y_int]
-                if foods[FoodType.SUGAR.value] > 0.1:
-                    found_food_type = FoodType.SUGAR
-                    food_amount = foods[FoodType.SUGAR.value]
-                elif foods[FoodType.PROTEIN.value] > 0.1:
-                    found_food_type = FoodType.PROTEIN
-                    food_amount = foods[FoodType.PROTEIN.value]
-            except (IndexError, TypeError):
-                found_food_type = None # Safety
-        else:
-            self.stuck_timer += 1
-            if not new_pos_cand and not moved: self.last_move_info += "(NoChoice)"
-            elif not moved: self.last_move_info += "(StayedPut)"
+            old_pos_int = tuple(map(int, old_pos))
 
-        # Post-Movement Actions
-        pos_int = tuple(map(int, self.pos)) # Use int pos
-        is_near_nest = distance_sq(pos_int, NEST_POS) <= NEST_RADIUS**2
+            # Check if the integer position actually changes
+            if target_int != old_pos_int:
+                self.pos = target # Update position
+                # Calculate direction based on integer positions
+                self.last_move_direction = (target_int[0] - old_pos_int[0], target_int[1] - old_pos_int[1])
+                self._update_path_history(target_int) # Use int pos for history
+                self.stuck_timer = 0 # Reset stuck timer on successful move
+                moved = True
+
+                # Check for food at the new integer position
+                try:
+                    x_int, y_int = target_int
+                    # Ensure coords are valid before accessing grid
+                    if 0 <= x_int < GRID_WIDTH and 0 <= y_int < GRID_HEIGHT:
+                        foods = self.simulation.grid.food[x_int, y_int]
+                        if foods[FoodType.SUGAR.value] > 0.1:
+                            found_food_type = FoodType.SUGAR
+                            food_amount = foods[FoodType.SUGAR.value]
+                        elif foods[FoodType.PROTEIN.value] > 0.1:
+                            found_food_type = FoodType.PROTEIN
+                            food_amount = foods[FoodType.PROTEIN.value]
+                    else: found_food_type = None # Invalid coords
+                except (IndexError, TypeError):
+                    found_food_type = None # Safety net
+
+            else: # Candidate position didn't change integer cell
+                 self.stuck_timer += 1
+                 self.last_move_info += "(Move->SameCell)"
+                 # Clear last move direction if stuck moving to same cell
+                 self.last_move_direction = (0,0)
+
+        else: # No move candidate was chosen
+            self.stuck_timer += 1
+            self.last_move_info += "(NoChoice)"
+            self.last_move_direction = (0,0) # Clear direction if no choice
+
+        # --- Post-Movement Actions ---
+        pos_int = tuple(map(int, self.pos)) # Use current int pos
+        nest_pos_int = tuple(map(int, NEST_POS))
+        is_near_nest = distance_sq(pos_int, nest_pos_int) <= NEST_RADIUS**2
         grid = self.simulation.grid
         sim = self.simulation
 
+        # Actions based on state after potential move
         if self.state == AntState.SEARCHING:
+            # If Worker finds food and isn't carrying anything
             if (self.caste == AntCaste.WORKER and found_food_type and
                     self.carry_amount == 0):
-                pickup = min(self.max_capacity, food_amount)
-                self.carry_amount = pickup
-                self.carry_type = found_food_type
-                food_idx = found_food_type.value
-                try:
-                    x, y = pos_int # Use int pos for grid access
-                    grid.food[x, y, food_idx] -= pickup
-                    grid.food[x, y, food_idx] = max(0, grid.food[x, y, food_idx])
-                    grid.add_pheromone(pos_int, P_FOOD_AT_SOURCE, 'food')
-                    if food_amount >= RICH_FOOD_THRESHOLD:
-                        grid.add_pheromone(pos_int, P_RECRUIT_FOOD, 'recruitment')
-                    self.state = AntState.RETURNING_TO_NEST
-                    self._clear_path_history()
-                    self.last_move_info = f"Picked {found_food_type.name}({pickup:.1f})"
-                    self.just_picked_food = True # Set flag AFTER state change
-                except (IndexError, TypeError):
-                    self.carry_amount = 0; self.carry_type = None
+                pickup_amount = min(self.max_capacity, food_amount) # Amount to pick up
+                # Only pick up a meaningful amount
+                if pickup_amount > 0.01:
+                    self.carry_amount = pickup_amount
+                    self.carry_type = found_food_type
+                    food_idx = found_food_type.value
+                    try:
+                        x, y = pos_int # Use int pos for grid access
+                        # Update food amount in the grid cell
+                        grid.food[x, y, food_idx] -= pickup_amount
+                        grid.food[x, y, food_idx] = max(0, grid.food[x, y, food_idx]) # Ensure not negative
+                        # Drop pheromones at the food source
+                        grid.add_pheromone(pos_int, P_FOOD_AT_SOURCE, 'food')
+                        # Drop recruitment pheromone if the source is rich
+                        if food_amount >= RICH_FOOD_THRESHOLD:
+                            grid.add_pheromone(pos_int, P_RECRUIT_FOOD, 'recruitment')
+
+                        # Change state and clear history for return journey
+                        self.state = AntState.RETURNING_TO_NEST
+                        self._clear_path_history()
+                        self.last_move_info = f"Picked {found_food_type.name}({pickup_amount:.1f})"
+                        self.just_picked_food = True # Flag set AFTER state change
+                    except (IndexError, TypeError):
+                        # Safety: Reset carry state if grid access failed
+                        self.carry_amount = 0; self.carry_type = None
+                else: # Found food, but too little to pick up
+                     self.last_move_info += "(FoodTraceFound)"
+
+
+            # If moved, found no food, and not too close to nest, drop negative pheromone
             elif (moved and not found_food_type and
-                  distance_sq(pos_int, NEST_POS) > (NEST_RADIUS + 2)**2):
-                 # Drop negative pheromone at previous integer position
-                 old_pos_int = tuple(map(int, old_pos))
-                 grid.add_pheromone(old_pos_int, P_NEGATIVE_SEARCH, 'negative')
+                  distance_sq(pos_int, nest_pos_int) > (NEST_RADIUS + 2)**2):
+                 old_pos_int = tuple(map(int, old_pos)) # Previous integer position
+                 # Check if old_pos_int is valid before adding pheromone
+                 if is_valid(old_pos_int):
+                     grid.add_pheromone(old_pos_int, P_NEGATIVE_SEARCH, 'negative')
+
 
         elif self.state == AntState.RETURNING_TO_NEST:
-            if is_near_nest: # Checked using int pos
-                dropped = self.carry_amount; type_dropped = self.carry_type
-                if dropped > 0 and type_dropped:
-                    if type_dropped == FoodType.SUGAR: sim.colony_food_storage_sugar += dropped
-                    elif type_dropped == FoodType.PROTEIN: sim.colony_food_storage_protein += dropped
-                    self.carry_amount = 0; self.carry_type = None
+            # If ant reaches the nest area
+            if is_near_nest:
+                dropped_amount = self.carry_amount
+                type_dropped = self.carry_type
+                # If carrying food, drop it in the colony storage
+                if dropped_amount > 0 and type_dropped:
+                    if type_dropped == FoodType.SUGAR: sim.colony_food_storage_sugar += dropped_amount
+                    elif type_dropped == FoodType.PROTEIN: sim.colony_food_storage_protein += dropped_amount
+                    self.carry_amount = 0; self.carry_type = None # Reset carry state
+
+                # Transition to next state (Patrolling for Soldier, Searching for Worker)
                 next_state = (AntState.PATROLLING if self.caste == AntCaste.SOLDIER
                               else AntState.SEARCHING)
                 self.state = next_state
-                self._clear_path_history()
+                self._clear_path_history() # Clear path for new task
                 type_str = f" {type_dropped.name}" if type_dropped else ""
                 next_s_str = next_state.name[:3]
-                self.last_move_info = (f"Dropped{type_str}({dropped:.1f})->{next_s_str}"
-                                       if dropped > 0 else f"NestEmpty->{next_s_str}")
-            elif moved and not local_just_picked:
-                 # Drop trails only outside nest radius (use int pos) and not immediately after pickup
+                self.last_move_info = (f"Dropped{type_str}({dropped_amount:.1f})->{next_s_str}"
+                                       if dropped_amount > 0 else f"NestEmpty->{next_s_str}")
+            # If moved while returning (and outside nest), drop pheromone trails
+            elif moved and not local_just_picked: # Don't drop trails immediately after pickup
                  old_pos_int = tuple(map(int, old_pos))
-                 if distance_sq(old_pos_int, NEST_POS) > NEST_RADIUS**2:
+                 # Check if old position is valid and outside nest radius
+                 if is_valid(old_pos_int) and distance_sq(old_pos_int, nest_pos_int) > NEST_RADIUS**2:
+                    # Drop home trail pheromone
                     grid.add_pheromone(old_pos_int, P_HOME_RETURNING, 'home')
+                    # If carrying food, also drop food trail pheromone
                     if self.carry_amount > 0:
                         grid.add_pheromone(old_pos_int, P_FOOD_RETURNING_TRAIL, 'food')
 
-        # Stuck Check
+
+        # --- Stuck Check ---
+        # Check if stuck timer exceeds threshold and not already escaping
         if (self.stuck_timer >= WORKER_STUCK_THRESHOLD and
                 self.state != AntState.ESCAPING):
-            # Check neighbors using integer coordinates
+            # Check if currently fighting (neighbors include self cell)
             neighbors_int = get_neighbors(pos_int, True)
             is_fighting = any(sim.get_enemy_at(p_int) for p_int in neighbors_int)
 
+            # If not fighting, initiate escape behavior
             if not is_fighting:
                 self.state = AntState.ESCAPING
-                self.escape_timer = WORKER_ESCAPE_DURATION
-                self.stuck_timer = 0
-                self._clear_path_history() # Clear history when starting escape
+                # Escape duration could potentially scale with speed? Let's keep fixed for now.
+                self.escape_timer = WORKER_ESCAPE_DURATION # Set escape duration (in ticks/updates)
+                self.stuck_timer = 0 # Reset stuck timer
+                self._clear_path_history() # Clear history to allow moving back
                 self.last_move_info = "Stuck->Escaping"
+
 
     def _update_state(self):
         """Handle automatic state transitions (mainly for Soldiers)."""
+        # Only applicable to Soldiers not currently escaping or returning
         if (self.caste != AntCaste.SOLDIER or
                 self.state in [AntState.ESCAPING, AntState.RETURNING_TO_NEST]):
             return
 
         pos_int = tuple(map(int, self.pos)) # Use int pos
-        max_alarm = 0; r_sq = 5*5; grid = self.simulation.grid
+        nest_pos_int = tuple(map(int, NEST_POS))
+        max_alarm = 0; max_recruit = 0; radius_sq = 5*5 # Check radius
+        grid = self.simulation.grid
         x0, y0 = pos_int
-        # Sense local alarm level using integer coordinates
+
+        # Sense local alarm and recruitment levels using integer coordinates
         for i in range(x0 - 2, x0 + 3):
             for j in range(y0 - 2, y0 + 3):
                 p = (i, j)
-                if distance_sq(pos_int, p) <= r_sq and is_valid(p):
+                if distance_sq(pos_int, p) <= radius_sq and is_valid(p):
                     max_alarm = max(max_alarm, grid.get_pheromone(p, 'alarm'))
+                    max_recruit = max(max_recruit, grid.get_pheromone(p, 'recruitment')) # Check recruitment too
 
-        is_near_nest = distance_sq(pos_int, NEST_POS) <= SOLDIER_PATROL_RADIUS_SQ
 
-        # State transition logic
-        if max_alarm > SOLDIER_DEFEND_ALARM_THRESHOLD:
+        is_near_nest = distance_sq(pos_int, nest_pos_int) <= SOLDIER_PATROL_RADIUS_SQ
+        # Combine signals for state transition trigger
+        threat_signal = max_alarm + max_recruit * 0.5 # Prioritize alarm
+
+        # --- State transition logic ---
+        # If high threat detected -> DEFENDING
+        if threat_signal > SOLDIER_DEFEND_ALARM_THRESHOLD:
             if self.state != AntState.DEFENDING:
                 self.state = AntState.DEFENDING
                 self._clear_path_history()
-                self.last_known_alarm_pos = None # Reset target when entering defend
-                self.last_move_info += " ->DEFEND"
+                self.last_known_alarm_pos = None # Reset target when entering defend state
+                self.last_move_info += " ->DEFEND(Threat!)"
+        # If currently DEFENDING but threat subsided -> PATROLLING
         elif self.state == AntState.DEFENDING:
-            # If alarm subsided, return to patrolling
             self.state = AntState.PATROLLING
-            self.last_move_info += " ->PATROL"
+            self.last_move_info += " ->PATROL(ThreatLow)"
+        # If near nest, no threat, and not already PATROLLING -> PATROLLING
         elif is_near_nest and self.state != AntState.PATROLLING:
-            # If near nest and no major alarm, start patrolling
             self.state = AntState.PATROLLING
-            self.last_move_info += " ->PATROL(Near)"
+            self.last_move_info += " ->PATROL(NearNest)"
+        # If PATROLLING but moved too far from nest -> SEARCHING (explore)
         elif not is_near_nest and self.state == AntState.PATROLLING:
-            # If wandered too far while patrolling, switch to searching
             self.state = AntState.SEARCHING
-            self.last_move_info += " ->SEARCH(Far)"
+            self.last_move_info += " ->SEARCH(PatrolFar)"
+        # If currently SEARCHING but back near nest -> PATROLLING
+        elif is_near_nest and self.state == AntState.SEARCHING:
+             self.state = AntState.PATROLLING
+             self.last_move_info += " ->PATROL(SearchNear)"
 
 
     def attack(self, target_enemy):
+        # Basic attack action
         target_enemy.take_damage(self.attack_power, self)
+        # Maybe add recoil or brief pause after attacking? (optional)
+
 
     def take_damage(self, amount, attacker):
-        if self.hp <= 0: return
+        """Process damage taken by the ant."""
+        if self.hp <= 0: return # Already dead
         self.hp -= amount
         if self.hp > 0:
+            # If still alive, release alarm/recruitment pheromones
             grid = self.simulation.grid
             pos_int = tuple(map(int, self.pos)) # Use int pos
-            grid.add_pheromone(pos_int, P_ALARM_FIGHT / 2, 'alarm')
-            recruit = (P_RECRUIT_DAMAGE_SOLDIER if self.caste == AntCaste.SOLDIER
-                       else P_RECRUIT_DAMAGE)
-            grid.add_pheromone(pos_int, recruit, 'recruitment')
+            grid.add_pheromone(pos_int, P_ALARM_FIGHT / 2, 'alarm') # Add standard alarm
+            # Add recruitment pheromone based on caste
+            recruit_amount = (P_RECRUIT_DAMAGE_SOLDIER if self.caste == AntCaste.SOLDIER
+                              else P_RECRUIT_DAMAGE)
+            grid.add_pheromone(pos_int, recruit_amount, 'recruitment')
+            # Potential state change on taking damage? (e.g., SEARCHING -> DEFENDING if soldier?)
+            # Handled by _update_state sensing the new pheromones.
+        # else: # HP <= 0
+             # self.last_move_info = "Killed in combat" # Set reason for removal
 
 
 # --- Queen Class ---
@@ -1121,64 +1430,106 @@ class Queen:
         self.pos = tuple(map(int, pos))
         self.simulation = sim
         self.hp = QUEEN_HP; self.max_hp = QUEEN_HP
-        self.age = 0; self.max_age = float('inf')
-        self.egg_lay_timer = rnd(0, QUEEN_EGG_LAY_RATE)
+        self.age = 0; self.max_age = float('inf') # Effectively immortal unless killed
+        self.egg_lay_timer_progress = 0.0 # Internal timer scaled by speed
+        self.egg_lay_interval_ticks = QUEEN_EGG_LAY_RATE # Interval in standard ticks
         self.color = QUEEN_COLOR
-        self.state = None; self.attack_power = 0; self.carry_amount = 0
+        self.state = None # Queen doesn't really have states like workers
+        self.attack_power = 0 # Queen doesn't attack
+        self.carry_amount = 0 # Queen doesn't carry
 
-    def update(self):
-        self.age += 1
-        self.egg_lay_timer += 1
-        if self.egg_lay_timer >= QUEEN_EGG_LAY_RATE:
+    def update(self, speed_multiplier):
+        """Update Queen's age and handle egg laying based on speed."""
+        # --- Aging ---
+        # Queen ages like other ants, based on speed multiplier
+        self.age += speed_multiplier # Simple age increment scaled by speed
+
+        # --- Egg Laying ---
+        self.egg_lay_timer_progress += speed_multiplier
+        # Check if enough time has passed (scaled by speed) to lay an egg
+        if self.egg_lay_timer_progress >= self.egg_lay_interval_ticks:
+            self.egg_lay_timer_progress %= self.egg_lay_interval_ticks # Reset timer keeping remainder
+
+            # Check for sufficient food resources
             needed_s = QUEEN_FOOD_PER_EGG_SUGAR
             needed_p = QUEEN_FOOD_PER_EGG_PROTEIN
             sim = self.simulation
-            if (sim.colony_food_storage_sugar >= needed_s and
-                    sim.colony_food_storage_protein >= needed_p):
+            has_food = (sim.colony_food_storage_sugar >= needed_s and
+                        sim.colony_food_storage_protein >= needed_p)
+
+            if has_food:
+                # Consume food
                 sim.colony_food_storage_sugar -= needed_s
                 sim.colony_food_storage_protein -= needed_p
-                self.egg_lay_timer = 0
+
+                # Decide caste for the new egg
                 caste = self._decide_caste()
-                egg_pos = self._find_egg_position() # Returns int pos
+                # Find a valid position for the egg (returns int pos or None)
+                egg_pos = self._find_egg_position()
+
                 if egg_pos: # Ensure a valid position was found
+                    # Create new brood item
                     new_brood = BroodItem(BroodStage.EGG, caste, egg_pos, sim.ticks)
                     sim.brood.append(new_brood)
+            # else: # Not enough food, skip laying egg this cycle
+
 
     def _decide_caste(self):
+        """Decide the caste of the next egg based on colony needs."""
         ratio = 0.0; ants = self.simulation.ants; brood = self.simulation.brood
-        # Consider ants + larvae/pupae for ratio calculation
-        total = len(ants) + sum(1 for b in brood if b.stage != BroodStage.EGG)
-        if total > 0:
-            soldiers = (sum(1 for a in ants if a.caste == AntCaste.SOLDIER) +
-                        sum(1 for b in brood if b.caste == AntCaste.SOLDIER and
-                            b.stage != BroodStage.EGG))
-            ratio = soldiers / total
-        # Decision logic
+        # Calculate current soldier ratio (considering active ants and developing brood)
+        # Only count larvae and pupae for caste ratio, as eggs are undecided/fragile
+        developing_brood = [b for b in brood if b.stage in [BroodStage.LARVA, BroodStage.PUPA]]
+        total_population = len(ants) + len(developing_brood)
+
+        if total_population > 0:
+            soldier_count = (sum(1 for a in ants if a.caste == AntCaste.SOLDIER) +
+                             sum(1 for b in developing_brood if b.caste == AntCaste.SOLDIER))
+            ratio = soldier_count / total_population
+
+        # --- Decision Logic ---
+        # If soldier ratio is below target, higher chance to lay a soldier egg
         if ratio < QUEEN_SOLDIER_RATIO_TARGET:
             return AntCaste.SOLDIER if random.random() < 0.6 else AntCaste.WORKER
-        elif random.random() < 0.03:
+        # If ratio is met, low chance to lay a soldier (maintain population)
+        elif random.random() < 0.05: # Reduced chance compared to previous version
             return AntCaste.SOLDIER
+        # Default: Lay a worker egg
         return AntCaste.WORKER
 
     def _find_egg_position(self):
-        # Get integer neighbors of integer queen position
-        valid = [p for p in get_neighbors(self.pos)
-                 if not self.simulation.grid.is_obstacle(p)] # get_neighbors returns int
-        # Prefer positions without other brood items (compare int positions)
-        free_valid = [p for p in valid
-                      if not any(b.pos == p for b in self.simulation.brood)]
-        if free_valid: return random.choice(free_valid)
-        elif valid: return random.choice(valid)
-        else: return self.pos # Fallback (already int)
+        """Find a valid integer position near the queen for a new egg."""
+        # Get integer neighbors of the queen's integer position
+        possible_spots = get_neighbors(self.pos) # get_neighbors returns int
+        valid_spots = [p for p in possible_spots
+                       if not self.simulation.grid.is_obstacle(p)]
+
+        # Prefer positions without existing brood items
+        brood_positions = {b.pos for b in self.simulation.brood} # Set of int positions
+        free_valid_spots = [p for p in valid_spots if p not in brood_positions]
+
+        if free_valid_spots:
+            return random.choice(free_valid_spots)
+        elif valid_spots:
+            # If no free spots, place on top of existing brood (less ideal)
+            return random.choice(valid_spots)
+        else:
+             # Very unlikely fallback: if no valid neighbor, place at queen's pos
+             if not self.simulation.grid.is_obstacle(self.pos):
+                  return self.pos
+             else:
+                  return None # Cannot place egg
+
 
     def take_damage(self, amount, attacker):
-        if self.hp <= 0: return
+        """Process damage taken by the queen."""
+        if self.hp <= 0: return # Already dead
         self.hp -= amount
         if self.hp > 0:
+            # If still alive, release strong alarm/recruitment pheromones at her integer position
             grid = self.simulation.grid
-            # Use integer position
-            grid.add_pheromone(self.pos, P_ALARM_FIGHT * 2, 'alarm')
-            grid.add_pheromone(self.pos, P_RECRUIT_DAMAGE * 2, 'recruitment')
+            grid.add_pheromone(self.pos, P_ALARM_FIGHT * 3, 'alarm') # More alarm
+            grid.add_pheromone(self.pos, P_RECRUIT_DAMAGE * 3, 'recruitment') # More recruitment
 
 
 # --- Enemy Class ---
@@ -1188,49 +1539,88 @@ class Enemy:
          # Ensure position is integer tuple
         self.pos = tuple(map(int, pos)); self.simulation = sim; self.hp = ENEMY_HP
         self.max_hp = ENEMY_HP; self.attack_power = ENEMY_ATTACK
-        self.move_delay_timer = rnd(0, ENEMY_MOVE_DELAY); self.color = ENEMY_COLOR
+        self.move_delay_base = ENEMY_MOVE_DELAY # Base delay in standard ticks
+        self.move_delay_timer = rnd(0, self.move_delay_base) # Initial random delay timer
+        self.color = ENEMY_COLOR
 
-    def update(self):
+    def update(self, speed_multiplier):
+        """Update enemy state, potentially moving or attacking."""
         pos_int = self.pos # Position is already int
-        # Combat Check - Check integer neighbors
+
+        # --- Combat Check ---
+        # Check integer neighbors (including current cell) for ants (worker, soldier, queen)
         neighbors_int = get_neighbors(pos_int, True)
-        targets = [a for p_int in neighbors_int
-                   if (a := self.simulation.get_ant_at(p_int)) and a.hp > 0]
-        if targets:
-            target = random.choice(targets); self.attack(target); return # Don't move if fighting
+        target_ants = [a for p_int in neighbors_int
+                       if (a := self.simulation.get_ant_at(p_int)) and a.hp > 0]
 
-        # Movement Delay & Execution
-        if self.move_delay_timer > 0: self.move_delay_timer -= 1; return
-        self.move_delay_timer = ENEMY_MOVE_DELAY
+        if target_ants:
+            # Prioritize attacking queen if she's adjacent
+            queen_target = next((a for a in target_ants if isinstance(a, Queen)), None)
+            target = queen_target if queen_target else random.choice(target_ants)
 
-        # Get integer neighbors
-        possible = get_neighbors(pos_int); valid = []
-        for m_int in possible: # Neighbors are already int
+            self.attack(target)
+            # Add small amount of negative pheromone when attacking? Optional.
+            # self.simulation.grid.add_pheromone(pos_int, 5.0, 'negative')
+            return # Don't move if fighting
+
+
+        # --- Movement Delay ---
+        # Timer counts down scaled by speed
+        self.move_delay_timer -= speed_multiplier
+        if self.move_delay_timer > 0:
+            return # Skip movement if delay active
+
+        # Reset timer for next move, possibly adding random variation
+        self.move_delay_timer = self.move_delay_base + rnd_uniform(-0.5, 0.5)
+
+
+        # --- Movement Logic ---
+        # Get valid integer neighbor cells for movement
+        possible_moves = get_neighbors(pos_int) # Gets int neighbors
+        valid_moves = []
+        for m_int in possible_moves: # Neighbors are already int
+            # Check for obstacles, other enemies, and ants at the potential destination
             if (not self.simulation.grid.is_obstacle(m_int) and
-                not self.simulation.is_enemy_at(m_int, self) and
-                not self.simulation.is_ant_at(m_int)):
-                valid.append(m_int) # Add valid integer position
+                not self.simulation.is_enemy_at(m_int, self) and # Avoid colliding with other enemies
+                not self.simulation.is_ant_at(m_int)): # Avoid walking onto ants directly
+                valid_moves.append(m_int) # Add valid integer position
 
-        if valid:
-            chosen = None
-            # Use integer positions for distance calculation
+        if valid_moves:
+            chosen_move = None
+            nest_pos_int = tuple(map(int, NEST_POS))
+
+            # Small chance to specifically target nest direction
             if random.random() < ENEMY_NEST_ATTRACTION:
-                best = None; min_d = distance_sq(pos_int, NEST_POS)
-                for move_int in valid:
-                     d = distance_sq(move_int, NEST_POS)
-                     if d < min_d: min_d = d; best = move_int
-                chosen = best if best else random.choice(valid)
+                best_nest_move = None
+                min_dist_sq = distance_sq(pos_int, nest_pos_int)
+                # Find valid move that gets closer to the nest
+                for move in valid_moves:
+                     d_sq = distance_sq(move, nest_pos_int)
+                     if d_sq < min_dist_sq:
+                         min_dist_sq = d_sq
+                         best_nest_move = move
+                # If a closer move exists, choose it
+                if best_nest_move:
+                     chosen_move = best_nest_move
+                else: # If no move gets closer, choose randomly from valid moves
+                     chosen_move = random.choice(valid_moves)
             else:
-                chosen = random.choice(valid)
+                # Default: Choose a random valid move
+                chosen_move = random.choice(valid_moves)
 
-            if chosen: # chosen is an integer tuple
-                 self.pos = chosen # Update position with the chosen int tuple
+            # Execute the chosen move
+            if chosen_move: # chosen_move is an integer tuple
+                 self.pos = chosen_move # Update position with the chosen int tuple
+
 
     def attack(self, target_ant):
+        """Attack a target ant."""
         target_ant.take_damage(self.attack_power, self)
 
     def take_damage(self, amount, attacker):
+        """Process damage taken by the enemy."""
         self.hp -= amount
+        # Optional: Add reaction like fleeing at low HP?
 
 
 # --- Main Simulation Class ---
@@ -1252,22 +1642,28 @@ class AntSimulation:
         self.app_running = True       # Controls the overall application loop (incl. menus)
         self.end_game_reason = ""     # Store why the game ended
 
-        # --- NEW: Colony Generation Counter ---
+        # Colony Generation Counter
         self.colony_generation = 0 # Start at 0, reset will increment to 1 first time
 
         # Defer initialization of simulation state to _reset_simulation
-        self.ticks = 0
+        self.ticks = 0 # Represents standard time units passed
         self.ants = []
         self.enemies = []
         self.brood = []
         self.queen = None
         self.colony_food_storage_sugar = 0.0
         self.colony_food_storage_protein = 0.0
-        self.enemy_spawn_timer = 0
+        self.enemy_spawn_timer = 0.0 # Use float timer scaled by speed
+        self.enemy_spawn_interval_ticks = ENEMY_SPAWN_RATE # Interval in standard ticks
+
         self.show_debug_info = True
-        self.simulation_speed_level = SPEED_LEVEL_NORMAL
-        self.current_target_fps = SPEED_LEVELS[self.simulation_speed_level]
-        self.buttons = self._create_buttons()
+
+        # --- NEW Speed Control State ---
+        self.simulation_speed_index = DEFAULT_SPEED_INDEX
+        self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
+        # --- End Speed Control State ---
+
+        self.buttons = self._create_buttons() # Create UI buttons
 
         # Call reset to perform initial setup and start first generation
         self._reset_simulation()
@@ -1276,21 +1672,21 @@ class AntSimulation:
         """Initialize fonts, handling potential errors."""
         try:
             # Use a common, often available font first
-            self.font = pygame.font.SysFont("sans", 16)
-            self.debug_font = pygame.font.SysFont("monospace", 14) # Separate font for debug
+            self.font = pygame.font.SysFont("sans", 16) # Main UI font
+            self.debug_font = pygame.font.SysFont("monospace", 14) # Debug overlay font
             print("Using system 'sans' and 'monospace' fonts.")
         except Exception as e1:
             print(f"System font error: {e1}. Trying default font.")
             try:
-                self.font = pygame.font.Font(None, 20) # Default pygame font, maybe larger
+                self.font = pygame.font.Font(None, 20) # Default pygame font
                 self.debug_font = pygame.font.Font(None, 16)
                 print("Using Pygame default font.")
             except Exception as e2:
                 print(f"FATAL: Default font error: {e2}. Cannot render text.")
                 self.font = None # Ensure it's None if failed
                 self.debug_font = None
-                # Optionally exit or handle the lack of font later
-                # self.app_running = False
+                # Stop the application if fonts cannot be loaded
+                self.app_running = False
 
     def _reset_simulation(self):
         """Resets the simulation state for a new game."""
@@ -1302,10 +1698,10 @@ class AntSimulation:
         self.queen = None # Ensure queen is cleared before potentially failing to place new one
         self.colony_food_storage_sugar = INITIAL_COLONY_FOOD_SUGAR
         self.colony_food_storage_protein = INITIAL_COLONY_FOOD_PROTEIN
-        self.enemy_spawn_timer = 0
+        self.enemy_spawn_timer = 0.0 # Reset scaled timer
         self.end_game_reason = ""
 
-        # --- INCREMENT Colony Counter ---
+        # INCREMENT Colony Counter
         self.colony_generation += 1
 
         # Reset grid (places obstacles and food)
@@ -1313,28 +1709,37 @@ class AntSimulation:
 
         # Spawn initial entities
         if not self._spawn_initial_entities():
-             # Handle critical failure if entities can't spawn (e.g., queen pos invalid)
              print("CRITICAL ERROR during simulation reset. Cannot continue.")
              self.simulation_running = False
              self.app_running = False # Stop the whole app if reset fails critically
              self.end_game_reason = "Initialisierungsfehler"
              return
 
-        # Set simulation state to running
+        # Set simulation state to running and reset speed to default
+        self.simulation_speed_index = DEFAULT_SPEED_INDEX
+        self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
         self.simulation_running = True
-        print(f"Kolonie {self.colony_generation} gestartet.")
+        print(f"Kolonie {self.colony_generation} gestartet at {SPEED_MULTIPLIERS[self.simulation_speed_index]:.1f}x speed.")
 
 
     def _create_buttons(self):
-        """Creates data structures for UI buttons."""
+        """Creates data structures for UI buttons (now +/- speed)."""
         buttons = []
-        button_h = 20; button_w = 60; margin = 5
-        start_x = WIDTH - (button_w + margin) * 4
-        actions = [('pause', 'Pause', 0), ('slow', 'Normal', 1), # Changed Slow label
-                   ('fast', 'Fast', 2), ('faster', 'Faster', 3)] # Added Faster button action
-        for i, (action, text, _) in enumerate(actions):
-            rect = pygame.Rect(start_x + i * (button_w + margin), margin, button_w, button_h)
-            buttons.append({'rect': rect, 'text': text, 'action': action})
+        button_h = 20
+        button_w = 30 # Make +/- buttons narrower
+        margin = 5
+        # Position buttons on the right side
+        btn_plus_x = WIDTH - button_w - margin
+        btn_minus_x = btn_plus_x - button_w - margin
+
+        # Minus Button
+        rect_minus = pygame.Rect(btn_minus_x, margin, button_w, button_h)
+        buttons.append({'rect': rect_minus, 'text': '-', 'action': 'speed_down'})
+
+        # Plus Button
+        rect_plus = pygame.Rect(btn_plus_x, margin, button_w, button_h)
+        buttons.append({'rect': rect_plus, 'text': '+', 'action': 'speed_up'})
+
         return buttons
 
     def _spawn_initial_entities(self):
@@ -1372,17 +1777,23 @@ class AntSimulation:
         if is_valid(base) and not self.grid.is_obstacle(base): return base
 
         # Check immediate neighbors (already integer positions)
-        for p in get_neighbors(base):
+        neighbors = get_neighbors(base)
+        random.shuffle(neighbors) # Check in random order
+        for p in neighbors:
              if not self.grid.is_obstacle(p): return p # Returns int pos
 
         # Check slightly further out if immediate neighbors fail
         for r in range(2, 5): # Increase search radius slightly
+             perimeter = []
              for dx in range(-r, r + 1):
                  for dy in range(-r, r + 1):
                      # Check only the perimeter of the radius r box
-                     if abs(dx) != r and abs(dy) != r: continue
-                     p = (base[0] + dx, base[1] + dy)
-                     if is_valid(p) and not self.grid.is_obstacle(p): return p # Returns int pos
+                     if abs(dx) == r or abs(dy) == r:
+                         p = (base[0] + dx, base[1] + dy)
+                         if is_valid(p) and not self.grid.is_obstacle(p):
+                              perimeter.append(p)
+             if perimeter:
+                 return random.choice(perimeter) # Return random valid spot on perimeter
 
         print("CRITICAL: Could not find ANY valid spot near nest center for Queen.")
         return None # Indicate failure
@@ -1391,10 +1802,11 @@ class AntSimulation:
         """Create and add a new ant of a specific caste if position is valid (expects int pos)."""
         pos_int = tuple(map(int, pos)) # Ensure integer tuple
         if not is_valid(pos_int): return False
+        # Check obstacle, existing ants/enemies, and queen position
         if (not self.grid.is_obstacle(pos_int) and
             not self.is_ant_at(pos_int) and
             not self.is_enemy_at(pos_int) and
-            (not self.queen or pos_int != self.queen.pos)): # Don't spawn on queen
+            (not self.queen or pos_int != self.queen.pos)):
             self.ants.append(Ant(pos_int, self, caste)); return True # Pass int pos
         return False
 
@@ -1405,30 +1817,38 @@ class AntSimulation:
             # Generate integer position directly
             pos_i = (rnd(0,GRID_WIDTH-1), rnd(0,GRID_HEIGHT-1))
             q_pos_int = self.queen.pos if self.queen else tuple(map(int, NEST_POS))
+            # Ensure enemy spawns sufficiently far from the nest
             dist_ok = distance_sq(pos_i, q_pos_int) > (MIN_FOOD_DIST_FROM_NEST)**2
 
-            if (not self.grid.is_obstacle(pos_i) and dist_ok and
+            # Check validity: not obstacle, far enough, no other entity present
+            if (dist_ok and not self.grid.is_obstacle(pos_i) and
                 not self.is_enemy_at(pos_i) and not self.is_ant_at(pos_i)):
                 self.enemies.append(Enemy(pos_i, self)); return True # Pass int pos
             tries += 1
-        return False
+        return False # Failed to find suitable spawn location
 
     def kill_ant(self, ant_to_remove, reason="unknown"):
         """Remove an ant from the simulation."""
-        if ant_to_remove in self.ants: self.ants.remove(ant_to_remove)
+        if ant_to_remove in self.ants:
+             self.ants.remove(ant_to_remove)
+        # else: print(f"Warn: Tried to remove non-existent ant ({reason}).") # Optional debug
 
     def kill_enemy(self, enemy_to_remove):
         """Remove an enemy and potentially drop food."""
         if enemy_to_remove in self.enemies:
             pos_int = enemy_to_remove.pos # Position is already int
-            if not self.grid.is_obstacle(pos_int): # Use int pos
+            # Drop food only if the position is valid and not an obstacle
+            if is_valid(pos_int) and not self.grid.is_obstacle(pos_int):
                 fx, fy = pos_int; grid = self.grid
                 s_idx = FoodType.SUGAR.value; p_idx = FoodType.PROTEIN.value
-                # Ensure indices are valid before accessing food array
-                if 0 <= fx < GRID_WIDTH and 0 <= fy < GRID_HEIGHT:
+                # Add food resources to the grid cell
+                try:
                     grid.food[fx, fy, s_idx] = min(MAX_FOOD_PER_CELL, grid.food[fx, fy, s_idx] + ENEMY_TO_FOOD_ON_DEATH_SUGAR)
                     grid.food[fx, fy, p_idx] = min(MAX_FOOD_PER_CELL, grid.food[fx, fy, p_idx] + ENEMY_TO_FOOD_ON_DEATH_PROTEIN)
+                except IndexError:
+                     print(f"WARN: IndexError accessing grid food at {pos_int} during enemy kill.")
             self.enemies.remove(enemy_to_remove)
+        # else: print("Warn: Tried to remove non-existent enemy.") # Optional debug
 
     def kill_queen(self, queen_to_remove):
         """Handle the death of the queen, stopping the current simulation run."""
@@ -1437,21 +1857,21 @@ class AntSimulation:
             print(f"    Food S:{self.colony_food_storage_sugar:.1f} P:{self.colony_food_storage_protein:.1f}")
             print(f"    Ants:{len(self.ants)}, Brood:{len(self.brood)}")
             self.queen = None
-            # --- MODIFICATION: Stop simulation, don't exit app ---
+            # Stop the simulation loop, trigger end game dialog
             self.simulation_running = False
             self.end_game_reason = "Königin gestorben"
         else:
-            print("Warn: Attempted Kill inactive queen.")
+            print("Warn: Attempted Kill inactive/non-existent queen.")
 
     def is_ant_at(self, pos, exclude_self=None):
         """Check if an ant (worker, soldier, or queen) is at an integer position."""
         pos_i = tuple(map(int, pos)) # Ensure integer comparison
         q = self.queen
-        # Queen's position is already int
+        # Check queen (position is already int)
         if (q and q.pos == pos_i and exclude_self != q): return True
+        # Check worker/soldier ants (position is already int)
         for a in self.ants:
             if a is exclude_self: continue
-            # Ant's position is already int
             if a.pos == pos_i: return True
         return False
 
@@ -1480,31 +1900,34 @@ class AntSimulation:
         return None
 
     def update(self):
-        """Run one simulation tick."""
-        # This method only runs if simulation_running is True
+        """Run one simulation tick. Assumes simulation_running is True."""
 
-        self.ticks += 1
+        # Get the current speed multiplier (0.0x if paused)
+        current_multiplier = SPEED_MULTIPLIERS[self.simulation_speed_index]
 
-        # --- Pre-Update Checks (use integer positions) ---
+        # If paused, do nothing except increment ticks minimally for display
+        if current_multiplier == 0.0:
+            self.ticks += 0.01 # Increment very slowly if paused
+            return
+
+        # --- Simulation Tick Increment ---
+        # Increment ticks based on the speed multiplier
+        self.ticks += current_multiplier
+
+
+        # --- Pre-Update Checks (Removal of dead/invalid entities) ---
         ants_to_remove = []
         for a in self.ants:
             pos_int = a.pos # Already int
             reason = ""
             if a.hp <= 0: reason = "hp <= 0"
-            elif a.age > a.max_age: reason = f"aged out ({a.age}/{a.max_age})"
+            elif a.age >= a.max_age_ticks: reason = f"aged out ({a.age:.0f}/{a.max_age_ticks})"
             elif self.grid.is_obstacle(pos_int): reason = f"in obstacle {pos_int}"
             if reason:
+                 # Store ant and reason for removal after iteration
                  ants_to_remove.append((a, reason))
 
-        enemies_to_remove = []
-        for e in self.enemies:
-            pos_int = e.pos # Already int
-            reason = ""
-            if e.hp <= 0: reason = "hp <= 0"
-            elif self.grid.is_obstacle(pos_int): reason = f"in obstacle {pos_int}"
-            if reason:
-                 enemies_to_remove.append(e) # No reason needed for enemy removal message
-
+        enemies_to_remove = [e for e in self.enemies if e.hp <= 0 or self.grid.is_obstacle(e.pos)]
         queen_remove = None
         if self.queen:
             pos_int = self.queen.pos # Already int
@@ -1514,113 +1937,115 @@ class AntSimulation:
             if reason:
                  queen_remove = self.queen
 
-        # Perform removals after iteration
-        for ant, reason in ants_to_remove:
-             # print(f"Removing ant {ant.caste} at {ant.pos} reason: {reason}") # Debug Optional
-             self.kill_ant(ant, reason)
-        for enemy in enemies_to_remove:
-             self.kill_enemy(enemy)
+        # Perform removals
+        for ant, reason in ants_to_remove: self.kill_ant(ant, reason)
+        for enemy in enemies_to_remove: self.kill_enemy(enemy)
         if queen_remove:
              self.kill_queen(queen_remove) # This might set simulation_running to False
 
         # If queen died, stop further updates for this tick
         if not self.simulation_running: return
 
-        # --- Update Entities ---
-        if self.queen: self.queen.update()
-        # Check again if queen died during her update (e.g., starvation check if added)
-        if not self.simulation_running: return
 
+        # --- Update Entities --- Pass the speed multiplier ---
+        if self.queen: self.queen.update(current_multiplier)
+        if not self.simulation_running: return # Check if queen died during update
+
+        # Update Brood Items
         hatched=[]; brood_copy=list(self.brood)
         for item in brood_copy:
-             # Ensure item is still in the main list before updating
-             if item in self.brood:
-                 hatch_signal = item.update(self.ticks, self)
-                 if hatch_signal and hatch_signal in self.brood: # Check if it wasn't removed already
+             if item in self.brood: # Check if not already removed
+                 hatch_signal = item.update(self.ticks, self) # Pass simulation obj for food access
+                 if hatch_signal and hatch_signal in self.brood:
                      hatched.append(hatch_signal) # Should be the item itself
 
+        # Spawn hatched ants
         for pupa in hatched:
             if pupa in self.brood: # Check again before removing/spawning
                  self.brood.remove(pupa)
                  self._spawn_hatched_ant(pupa.caste, pupa.pos) # Pass caste and position
 
-        # Use copies for safe iteration while entities might be removed
+        # Update Ants and Enemies (pass speed multiplier)
         ants_copy=list(self.ants); enemies_copy=list(self.enemies)
-
-        # Shuffle lists slightly to vary update order? Optional.
-        # random.shuffle(ants_copy)
-        # random.shuffle(enemies_copy)
+        # Shuffle update order slightly to break synchronicity
+        random.shuffle(ants_copy)
+        random.shuffle(enemies_copy)
 
         for a in ants_copy:
-             if a in self.ants: # Check if ant wasn't killed mid-update
-                 a.update()
+             if a in self.ants: a.update(current_multiplier)
         for e in enemies_copy:
-            if e in self.enemies: # Check if enemy wasn't killed mid-update
-                e.update()
+            if e in self.enemies: e.update(current_multiplier)
 
-        # Check for dead ants/enemies *after* their updates (e.g., starvation, combat results)
-        # This is slightly redundant with pre-update checks but ensures effects within the tick are handled
+
+        # --- Post-Update Checks (Catch deaths during update) ---
         final_ants_invalid = [a for a in self.ants if a.hp <= 0]
         final_enemies_invalid = [e for e in self.enemies if e.hp <= 0]
         for a in final_ants_invalid: self.kill_ant(a, "post-update")
         for e in final_enemies_invalid: self.kill_enemy(e)
         if self.queen and self.queen.hp <= 0: self.kill_queen(self.queen)
 
-        # If simulation stopped during updates, exit early
-        if not self.simulation_running: return
+        if not self.simulation_running: return # Exit if queen died
 
-        # Update Pheromones
-        self.grid.update_pheromones()
 
-        # Spawn new enemies periodically
-        self.enemy_spawn_timer += 1
-        if self.enemy_spawn_timer >= ENEMY_SPAWN_RATE:
-            self.enemy_spawn_timer = 0
-            if len(self.enemies) < INITIAL_ENEMIES * 4: # Limit total enemies somewhat
+        # --- Update Environment ---
+        # Update Pheromones (pass speed multiplier for decay/diffusion scaling)
+        self.grid.update_pheromones(current_multiplier)
+
+        # Update Enemy Spawner
+        self.enemy_spawn_timer += current_multiplier
+        if self.enemy_spawn_timer >= self.enemy_spawn_interval_ticks:
+            self.enemy_spawn_timer %= self.enemy_spawn_interval_ticks # Reset timer
+            # Limit total number of enemies
+            if len(self.enemies) < INITIAL_ENEMIES * 5:
                  self.spawn_enemy()
+
 
     def _spawn_hatched_ant(self, caste: AntCaste, pupa_pos: tuple):
         """Tries to spawn a hatched ant near the pupa's location."""
         # Try spawning exactly at the pupa's (integer) location first
-        if self.add_ant(pupa_pos, caste):
-            return True
+        if self.add_ant(pupa_pos, caste): return True
 
         # If blocked, try neighbors of the pupa's location
-        attempts = 0
         neighbors = get_neighbors(pupa_pos) # Gets int neighbors
         random.shuffle(neighbors) # Try neighbors in random order
         for pos in neighbors:
-             if self.add_ant(pos, caste):
-                 return True
-             attempts += 1
-             if attempts >= 5: break # Limit attempts near pupa
+             if self.add_ant(pos, caste): return True
 
         # Fallback: Try spawning near queen (less ideal)
         if self.queen:
             base = self.queen.pos
-            attempts = 0
-            while attempts < 10:
-                ox = rnd(-NEST_RADIUS, NEST_RADIUS); oy = rnd(-NEST_RADIUS, NEST_RADIUS)
+            for attempts in range(10): # Limit attempts
+                ox = rnd(-NEST_RADIUS + 1, NEST_RADIUS - 1) # Spawn closer inside nest
+                oy = rnd(-NEST_RADIUS + 1, NEST_RADIUS - 1)
                 pos = (base[0] + ox, base[1] + oy) # int pos
                 if self.add_ant(pos, caste): return True
-                attempts += 1
 
-        print(f"Warn: Failed hatch spawn {caste.name} near {pupa_pos}") # Debug
+        # print(f"Warn: Failed hatch spawn {caste.name} near {pupa_pos}") # Optional Debug
         return False
 
 
     def draw_debug_info(self):
-        if not self.debug_font: return # Use the dedicated debug font
+        if not self.debug_font: return
         ant_c=len(self.ants); enemy_c=len(self.enemies); brood_c=len(self.brood)
         food_s=self.colony_food_storage_sugar; food_p=self.colony_food_storage_protein
-        tick=self.ticks; fps=self.clock.get_fps()
+        tick_display = int(self.ticks) # Show integer ticks passed
+        fps=self.clock.get_fps()
         w_c=sum(1 for a in self.ants if a.caste==AntCaste.WORKER); s_c=sum(1 for a in self.ants if a.caste==AntCaste.SOLDIER)
         e_c=sum(1 for b in self.brood if b.stage==BroodStage.EGG); l_c=sum(1 for b in self.brood if b.stage==BroodStage.LARVA); p_c=sum(1 for b in self.brood if b.stage==BroodStage.PUPA)
 
-        # --- MODIFICATION: Add Kolonie Counter ---
+        # --- Get Current Speed Multiplier ---
+        current_multiplier = SPEED_MULTIPLIERS[self.simulation_speed_index]
+        if current_multiplier == 0.0:
+            speed_text = "Speed: Paused"
+        else:
+            # Format with one decimal place, unless it's an integer
+            speed_text = f"Speed: {current_multiplier:.1f}x".replace('.0x','x')
+
+        # --- Assemble Debug Text Lines ---
         texts = [
-            f"Kolonie: {self.colony_generation}", # Display colony generation
-            f"Tick: {tick} FPS: {fps:.0f}",
+            f"Kolonie: {self.colony_generation}",
+            f"Tick: {tick_display} FPS: {fps:.0f}",
+             speed_text, # Display current speed
             f"Ants: {ant_c} (W:{w_c} S:{s_c})",
             f"Brood: {brood_c} (E:{e_c} L:{l_c} P:{p_c})",
             f"Enemies: {enemy_c}",
@@ -1628,48 +2053,49 @@ class AntSimulation:
         ]
         y=5; col=(255,255,255); line_h = self.debug_font.get_height() + 1
 
+        # Render standard debug lines
         for i, txt in enumerate(texts):
             try:
                 surf=self.debug_font.render(txt,True,col); self.screen.blit(surf,(5, y+i*line_h))
             except Exception as e: print(f"Debug Font render err: {e}")
 
-        # --- Mouse hover ---
+        # --- Mouse Hover Info ---
         try:
             mx,my=pygame.mouse.get_pos(); gx,gy=mx//CELL_SIZE,my//CELL_SIZE
-            pos_f=(gx,gy) # Keep float for potential future use, but use int for checks
             pos_i=(gx,gy) # Integer position for grid access and entity checks
 
             if is_valid(pos_i):
                 lines=[];
-                entity=self.get_ant_at(pos_i) or self.get_enemy_at(pos_i) # Use int pos
+                entity = self.get_ant_at(pos_i) or self.get_enemy_at(pos_i) # Use int pos
+
+                # Entity Info (Ant, Queen, Enemy)
                 if entity:
                     entity_pos_int = entity.pos # Already int
-                    if isinstance(entity,Queen): lines.extend([f"QUEEN @{entity_pos_int}", f"HP:{entity.hp}/{entity.max_hp}"])
-                    elif isinstance(entity,Ant): lines.extend([f"{entity.caste.name}@{entity_pos_int}", f"S:{entity.state.name} HP:{entity.hp:.0f}", f"C:{entity.carry_amount:.1f}({entity.carry_type.name if entity.carry_type else '-'})", f"Age:{entity.age}", f"Mv:{entity.last_move_info[:25]}"])
-                    elif isinstance(entity,Enemy): lines.extend([f"ENEMY @{entity_pos_int}", f"HP:{entity.hp}/{entity.max_hp}"])
+                    if isinstance(entity,Queen): lines.extend([f"QUEEN @{entity_pos_int}", f"HP:{entity.hp:.0f}/{entity.max_hp}"])
+                    elif isinstance(entity,Ant): lines.extend([f"{entity.caste.name}@{entity_pos_int}", f"S:{entity.state.name} HP:{entity.hp:.0f}", f"C:{entity.carry_amount:.1f}({entity.carry_type.name if entity.carry_type else '-'})", f"Age:{entity.age:.0f}/{entity.max_age_ticks}", f"Mv:{entity.last_move_info[:25]}"])
+                    elif isinstance(entity,Enemy): lines.extend([f"ENEMY @{entity_pos_int}", f"HP:{entity.hp:.0f}/{entity.max_hp}"])
 
-                # Check for brood at integer position
+                # Brood Info
                 brood_at_pos=[b for b in self.brood if b.pos == pos_i]
                 if brood_at_pos: lines.append(f"Brood:{len(brood_at_pos)} @{pos_i}");
-                for b in brood_at_pos[:2]: lines.append(f"-{b.stage.name}({b.caste.name}) {b.progress_timer}/{b.duration}")
+                for b in brood_at_pos[:2]: lines.append(f"-{b.stage.name}({b.caste.name}) {int(b.progress_timer)}/{b.duration}") # Show integer progress
 
-                obs=self.grid.is_obstacle(pos_i); obs_txt=" OBSTACLE" if obs else "" # Use int pos
+                # Cell Info (Obstacle, Food, Pheromones)
+                obs=self.grid.is_obstacle(pos_i); obs_txt=" OBSTACLE" if obs else ""
                 lines.append(f"Cell:{pos_i}{obs_txt}")
-
                 if not obs:
                     try:
-                        # Access grid data using integer position
                         foods=self.grid.food[pos_i[0],pos_i[1]]; food_txt=f"Food S:{foods[0]:.1f} P:{foods[1]:.1f}"
-                        ph={t:self.grid.get_pheromone(pos_i,t) for t in ['home','food','alarm','negative','recruitment']} # Use int pos
+                        ph={t:self.grid.get_pheromone(pos_i,t) for t in ['home','food','alarm','negative','recruitment']}
                         ph1=f"Ph H:{ph['home']:.0f} F:{ph['food']:.0f}"; ph2=f"Ph A:{ph['alarm']:.0f} N:{ph['negative']:.0f} R:{ph['recruitment']:.0f}"
                         lines.extend([food_txt, ph1, ph2])
                     except IndexError: lines.append("Error reading cell data")
 
+                # Render hover info at the bottom
                 hover_col=(255,255,0); y_off=HEIGHT-(len(lines)*line_h)-5
                 for i, line in enumerate(lines):
                      surf=self.debug_font.render(line,True,hover_col); self.screen.blit(surf,(5,y_off+i*line_h))
         except Exception as e:
-            # Print more details on error
             import traceback
             print(f"Debug draw err (mouse @ {pygame.mouse.get_pos()}): {e}")
             # traceback.print_exc() # Uncomment for full traceback
@@ -1681,14 +2107,12 @@ class AntSimulation:
         self._draw_queen()
         self._draw_entities()
         if self.show_debug_info: self.draw_debug_info()
-        self._draw_buttons() # Draw speed buttons
-        # Note: End game dialog is drawn separately in its own loop
+        self._draw_buttons() # Draw speed +/- buttons
         pygame.display.flip()
 
     def _draw_grid(self):
         # 1. BG & Obstacles
         bg=pygame.Surface((WIDTH,HEIGHT)); bg.fill(MAP_BG_COLOR)
-        # Draw obstacles based on the boolean array
         obstacle_coords = np.argwhere(self.grid.obstacles)
         cs = CELL_SIZE
         for x, y in obstacle_coords:
@@ -1699,36 +2123,28 @@ class AntSimulation:
         ph_types=['home','food','alarm','negative','recruitment']
         ph_colors={'home':PHEROMONE_HOME_COLOR, 'food':PHEROMONE_FOOD_COLOR, 'alarm':PHEROMONE_ALARM_COLOR, 'negative':PHEROMONE_NEGATIVE_COLOR, 'recruitment':PHEROMONE_RECRUITMENT_COLOR}
         ph_arrays={'home':self.grid.pheromones_home, 'food':self.grid.pheromones_food, 'alarm':self.grid.pheromones_alarm, 'negative':self.grid.pheromones_negative, 'recruitment':self.grid.pheromones_recruitment}
-        min_draw_ph=0.5 # Min pheromone value to draw
+        min_draw_ph=0.5
 
         for ph_type in ph_types:
             ph_surf=pygame.Surface((WIDTH,HEIGHT), pygame.SRCALPHA)
             base_col=ph_colors[ph_type]; arr=ph_arrays[ph_type]
             cur_max = RECRUITMENT_PHEROMONE_MAX if ph_type=='recruitment' else PHEROMONE_MAX
-            # Use a lower normalization value for better visibility of lower pheromone levels
-            norm_divisor = max(cur_max / 3.0, 1.0) # Normalize against 1/3rd of max
-
-            # Find coordinates where pheromone > min_draw_ph
+            norm_divisor = max(cur_max / 3.0, 1.0)
             nz_coords = np.argwhere(arr > min_draw_ph)
 
             for x,y in nz_coords:
                 val = arr[x, y]
-                # Normalize value (clamped between 0 and 1)
                 norm_val = normalize(val, norm_divisor)
-                # Alpha depends on normalized value (more intense for stronger pheromones)
-                alpha = int(norm_val * base_col[3]) # base_col[3] is the max alpha for this type
-                alpha = min(max(alpha, 0), 255) # Clamp alpha
-
-                if alpha > 3: # Only draw if somewhat visible
+                alpha = int(norm_val * base_col[3])
+                alpha = min(max(alpha, 0), 255)
+                if alpha > 3:
                     color = (*base_col[:3], alpha)
                     pygame.draw.rect(ph_surf, color, (x * cs, y * cs, cs, cs))
-
             self.screen.blit(ph_surf, (0, 0))
 
 
         # 3. Food
-        min_draw_food=0.1 # Min total food to draw cell color
-        # Find coordinates where total food > min_draw_food
+        min_draw_food=0.1
         food_totals = np.sum(self.grid.food, axis=2)
         food_nz_coords = np.argwhere(food_totals > min_draw_food)
 
@@ -1736,51 +2152,42 @@ class AntSimulation:
             try:
                 foods = self.grid.food[x, y]
                 s = foods[FoodType.SUGAR.value]; p = foods[FoodType.PROTEIN.value]; total = s + p
-                color = MAP_BG_COLOR # Default if total is somehow zero despite check
-
-                if total > 0.01: # Recalculate ratio for safety
+                color = MAP_BG_COLOR
+                if total > 0.01:
                      sr = s / total; pr = p / total;
                      s_col = FOOD_COLORS[FoodType.SUGAR]; p_col = FOOD_COLORS[FoodType.PROTEIN]
-                     # Mix colors based on ratio
                      r = int(s_col[0] * sr + p_col[0] * pr)
                      g = int(s_col[1] * sr + p_col[1] * pr)
                      b = int(s_col[2] * sr + p_col[2] * pr)
                      color = (r, g, b)
-
-                # Draw food cell
                 rect = (x * cs, y * cs, cs, cs); pygame.draw.rect(self.screen, color, rect)
-            except IndexError: continue # Skip if coords somehow invalid
+            except IndexError: continue
 
         # 4. Nest Area Highlight
         r = NEST_RADIUS; nx, ny = tuple(map(int, NEST_POS));
-        # Calculate top-left corner and size based on integer center and radius
         nest_rect_coords = ((nx - r) * cs, (ny - r) * cs, (r * 2 + 1) * cs, (r * 2 + 1) * cs)
         try:
             rect = pygame.Rect(nest_rect_coords)
-            # Create a surface for the overlay
             nest_surf = pygame.Surface(rect.size, pygame.SRCALPHA)
-            nest_surf.fill((100, 100, 100, 30)) # Semi-transparent gray
+            nest_surf.fill((100, 100, 100, 30))
             self.screen.blit(nest_surf, rect.topleft)
         except ValueError as e:
             print(f"Error creating nest rect surface {nest_rect_coords}: {e}")
 
 
     def _draw_brood(self):
-        # Use a copy in case list changes during drawing (less likely but safer)
         brood_copy=list(self.brood);
         for item in brood_copy:
-             # Check if item still exists and has valid position
              if item in self.brood and is_valid(item.pos):
-                 item.draw(self.screen) # Draw method now handles static drawing
+                 item.draw(self.screen)
 
     def _draw_queen(self):
         if not self.queen or not is_valid(self.queen.pos): return
-        # Queen pos is already int
         pos_px = (int(self.queen.pos[0] * CELL_SIZE + CELL_SIZE / 2),
                   int(self.queen.pos[1] * CELL_SIZE + CELL_SIZE / 2))
         radius = int(CELL_SIZE / 1.5);
         pygame.draw.circle(self.screen, self.queen.color, pos_px, radius);
-        pygame.draw.circle(self.screen, (255, 255, 255), pos_px, radius, 1) # White outline
+        pygame.draw.circle(self.screen, (255, 255, 255), pos_px, radius, 1)
 
     def _draw_entities(self):
         cs_half = CELL_SIZE / 2
@@ -1788,13 +2195,11 @@ class AntSimulation:
         ants_copy = list(self.ants)
         for a in ants_copy:
              if a not in self.ants or not is_valid(a.pos): continue
-             # Ant pos is already int
              pos_px = (int(a.pos[0] * CELL_SIZE + cs_half), int(a.pos[1] * CELL_SIZE + cs_half))
              radius = int(CELL_SIZE / a.size_factor)
              color = a.search_color if a.state in [AntState.SEARCHING, AntState.PATROLLING, AntState.DEFENDING] else a.return_color
              if a.state == AntState.ESCAPING: color = WORKER_ESCAPE_COLOR
              pygame.draw.circle(self.screen, color, pos_px, radius)
-             # Draw carried food indicator
              if a.carry_amount > 0:
                  food_color = FOOD_COLORS.get(a.carry_type, FOOD_COLOR_MIX)
                  pygame.draw.circle(self.screen, food_color, pos_px, int(radius * 0.6))
@@ -1803,64 +2208,64 @@ class AntSimulation:
         enemies_copy = list(self.enemies)
         for e in enemies_copy:
              if e not in self.enemies or not is_valid(e.pos): continue
-             # Enemy pos is already int
              pos_px = (int(e.pos[0] * CELL_SIZE + cs_half), int(e.pos[1] * CELL_SIZE + cs_half))
              radius = int(CELL_SIZE / 2.2)
              pygame.draw.circle(self.screen, e.color, pos_px, radius);
-             pygame.draw.circle(self.screen, (0, 0, 0), pos_px, radius, 1) # Black outline
+             pygame.draw.circle(self.screen, (0, 0, 0), pos_px, radius, 1)
 
 
     def _draw_buttons(self):
-        """Draws the speed control buttons."""
-        if not self.font: return # Use main UI font
+        """Draws the +/- speed control buttons."""
+        if not self.font: return
         mouse_pos = pygame.mouse.get_pos()
-
-        # Map button action to corresponding speed level
-        action_level_map = {'pause': 0, 'slow': 1, 'fast': 2, 'faster': 3}
 
         for button in self.buttons:
             rect = button['rect']
             text = button['text']
-            action = button['action']
-            level = action_level_map.get(action) # Get speed level for this button
 
-            color = BUTTON_COLOR
-            # Highlight button if it corresponds to the current speed level
-            if level is not None and self.simulation_speed_level == level:
-                color = BUTTON_ACTIVE_COLOR
-            elif rect.collidepoint(mouse_pos):
-                color = BUTTON_HOVER_COLOR # Highlight if mouse is over it
+            # Determine button color (hover or default)
+            color = BUTTON_HOVER_COLOR if rect.collidepoint(mouse_pos) else BUTTON_COLOR
 
+            # Draw the button rectangle
             pygame.draw.rect(self.screen, color, rect, border_radius=3)
+
+            # Render and draw the button text (+ or -)
             try:
                 text_surf = self.font.render(text, True, BUTTON_TEXT_COLOR)
                 text_rect = text_surf.get_rect(center=rect.center)
                 self.screen.blit(text_surf, text_rect)
             except Exception as e:
-                print(f"Button font render error: {e}")
+                print(f"Button font render error ({text}): {e}")
+
 
     def handle_events(self):
         """Process Pygame events (Quit, Keyboard, Mouse Clicks). Returns action if needed."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                 # --- MODIFICATION: Don't just set running=False, set app_running=False ---
                 self.simulation_running = False
                 self.app_running = False # Signal to exit the main application loop
                 self.end_game_reason = "Fenster geschlossen"
-                return 'quit' # Indicate quit action
+                return 'quit'
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                     # --- MODIFICATION: Stop simulation, don't exit app ---
-                    self.simulation_running = False
+                    self.simulation_running = False # Stop current simulation run
                     self.end_game_reason = "ESC gedrückt"
-                    return 'sim_stop' # Indicate simulation stop
+                    return 'sim_stop' # Trigger end game dialog
                 if event.key == pygame.K_d:
                     self.show_debug_info = not self.show_debug_info
+                # Optional: Keyboard speed controls
+                if event.key == pygame.K_MINUS or event.key == pygame.K_KP_MINUS:
+                     self._handle_button_click('speed_down')
+                     return 'speed_change'
+                if event.key == pygame.K_PLUS or event.key == pygame.K_KP_PLUS:
+                     self._handle_button_click('speed_up')
+                     return 'speed_change'
+
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: # Left click
-                    # Check speed buttons only if simulation is running
+                    # Check speed +/- buttons only if simulation is running
                     if self.simulation_running:
                         for button in self.buttons:
                             if button['rect'].collidepoint(event.pos):
@@ -1869,21 +2274,29 @@ class AntSimulation:
         return None # No quit or simulation stop action triggered
 
     def _handle_button_click(self, action):
-        """Updates simulation speed based on button action."""
-        level_map = {'pause': 0, 'slow': 1, 'fast': 2, 'faster': 3}
-        new_level = level_map.get(action)
+        """Updates simulation speed based on button action (+/-)."""
+        current_index = self.simulation_speed_index
+        max_index = len(SPEED_MULTIPLIERS) - 1
 
-        if new_level is not None:
-            self.simulation_speed_level = new_level
-            # Clamp level just in case (redundant if actions are fixed, but safe)
-            self.simulation_speed_level = max(0, min(self.simulation_speed_level, MAX_SPEED_LEVEL))
-            self.current_target_fps = SPEED_LEVELS.get(self.simulation_speed_level, SPEED_LEVELS[SPEED_LEVEL_NORMAL])
-            print(f"Speed set to level: {self.simulation_speed_level} (Target FPS: {self.current_target_fps})") # Debug
+        if action == 'speed_down':
+            new_index = max(0, current_index - 1) # Decrease index, min 0
+        elif action == 'speed_up':
+            new_index = min(max_index, current_index + 1) # Increase index, max max_index
         else:
              print(f"Warn: Unknown button action '{action}'")
+             return # Do nothing for unknown actions
+
+        # Update index and target FPS only if the index changed
+        if new_index != self.simulation_speed_index:
+            self.simulation_speed_index = new_index
+            self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
+            # Debug print the new speed
+            new_speed = SPEED_MULTIPLIERS[self.simulation_speed_index]
+            speed_str = "Paused" if new_speed == 0.0 else f"{new_speed:.1f}x"
+            print(f"Speed changed to: {speed_str} (Index: {self.simulation_speed_index}, Target FPS: {self.current_target_fps})")
 
 
-    # --- NEW: End Game Dialog ---
+    # --- End Game Dialog --- (Unchanged from previous version)
     def _show_end_game_dialog(self):
         """Displays the 'Restart' or 'Quit' dialog and handles input."""
         if not self.font:
@@ -1940,21 +2353,16 @@ class AntSimulation:
 
             # --- Drawing the Dialog ---
             self.screen.blit(overlay, (0, 0)) # Draw overlay first
-
-            # Draw dialog box background (optional)
             pygame.draw.rect(self.screen, (40, 40, 80), (dialog_x, dialog_y, dialog_w, dialog_h), border_radius=5)
 
-            # Render and draw text
-            try:
+            try: # Render and draw text
                 title_surf = self.font.render(title_text, True, text_color)
                 title_rect = title_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 30))
                 self.screen.blit(title_surf, title_rect)
-
                 reason_surf = self.font.render(reason_text, True, text_color)
                 reason_rect = reason_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 60))
                 self.screen.blit(reason_surf, reason_rect)
             except Exception as e: print(f"Dialog text render error: {e}")
-
 
             # Draw Restart Button
             r_color = BUTTON_HOVER_COLOR if restart_rect.collidepoint(mouse_pos) else BUTTON_COLOR
@@ -1965,7 +2373,6 @@ class AntSimulation:
                  self.screen.blit(r_text_surf, r_text_rect)
             except Exception as e: print(f"Restart Button render error: {e}")
 
-
             # Draw Quit Button
             q_color = BUTTON_HOVER_COLOR if quit_rect.collidepoint(mouse_pos) else BUTTON_COLOR
             pygame.draw.rect(self.screen, q_color, quit_rect, border_radius=3)
@@ -1975,12 +2382,10 @@ class AntSimulation:
                  self.screen.blit(q_text_surf, q_text_rect)
             except Exception as e: print(f"Quit Button render error: {e}")
 
-
             pygame.display.flip()
-            self.clock.tick(30) # Lower FPS for menu is fine
+            self.clock.tick(30) # Lower FPS for menu
 
-        # If loop exits without choice (e.g. app_running became false), default to quit
-        return 'quit'
+        return 'quit' # Default if loop exits unexpectedly
 
 
     def run(self):
@@ -1988,107 +2393,76 @@ class AntSimulation:
         print("Starting Ant Simulation - Complex Dynamics...")
         print("Press 'D' to toggle debug info overlay.")
         print("Press 'ESC' during simulation to end current run.")
-        print("Use UI buttons for speed control.")
+        print("Use +/- buttons or keyboard +/- for speed control.")
 
-        # Outer loop controls the application lifetime (including restarts)
         while self.app_running:
-
             # --- Simulation Phase ---
-            # simulation_running is set true by _reset_simulation
             while self.simulation_running and self.app_running:
-                action = self.handle_events() # Process quit, ESC, clicks
+                action = self.handle_events()
 
-                if not self.app_running: break # Exit outer loop if QUIT event occurred
-                if action == 'sim_stop': break # Exit simulation loop if ESC pressed
+                if not self.app_running: break
+                if action == 'sim_stop': break
 
-                # Only update and draw if not paused AND simulation is running
-                if self.simulation_speed_level > 0:
-                    self.update()
+                # --- Update simulation state if not paused ---
+                current_multiplier = SPEED_MULTIPLIERS[self.simulation_speed_index]
+                if current_multiplier > 0.0:
+                    self.update() # update() now handles internal scaling
 
-                # Draw the current simulation state
+                # --- Draw current state ---
                 self.draw()
 
-                # Control simulation speed (even when paused, tick minimally for UI responsiveness)
-                target_fps = self.current_target_fps if self.simulation_speed_level > 0 else 10
-                self.clock.tick(target_fps)
+                # --- Control frame rate ---
+                # Use the target FPS based on the current speed index
+                self.clock.tick(self.current_target_fps)
 
             # --- End Game / Dialog Phase ---
-            if not self.app_running:
-                 break # Exit main loop immediately if app should close
+            if not self.app_running: break
 
-            # If simulation stopped (queen died, ESC), show the dialog
-            # Make sure we have a reason, otherwise assume user quit/closed window
             if not self.end_game_reason: self.end_game_reason = "Unbekannt"
-
             choice = self._show_end_game_dialog()
 
             if choice == 'restart':
-                self._reset_simulation() # Resets state and sets simulation_running = True
-                # The outer loop will then re-enter the simulation phase
+                self._reset_simulation()
             elif choice == 'quit':
-                self.app_running = False # Signal outer loop to terminate
+                self.app_running = False
 
         # --- Cleanup ---
         print("Exiting application.")
         try:
             pygame.quit()
             print("Pygame shut down.")
-        except Exception as e: # Catch broader exceptions during quit
+        except Exception as e:
             print(f"Error during Pygame quit: {e}")
 
 
 # --- Start Simulation ---
 if __name__ == '__main__':
-    # Dependency checks & Init
-    try:
-        import numpy
-        print(f"NumPy version: {numpy.__version__}")
-    except ImportError:
-        print("FATAL: NumPy library is required but not found.")
-        input("Press Enter to Exit.")
-        exit()
-    try:
-        import pygame
-        print(f"Pygame version: {pygame.version.ver}")
-    except ImportError as e:
-        print(f"FATAL: Pygame library failed to import: {e}")
-        input("Press Enter to Exit.")
-        exit()
-    except Exception as e:
-         print(f"FATAL: An unexpected error occurred during Pygame import: {e}")
-         input("Press Enter to Exit.")
-         exit()
+    try: import numpy; print(f"NumPy version: {numpy.__version__}")
+    except ImportError: print("FATAL: NumPy required."); input("Exit."); exit()
+    try: import pygame; print(f"Pygame version: {pygame.version.ver}")
+    except ImportError as e: print(f"FATAL: Pygame import failed: {e}"); input("Exit."); exit()
+    except Exception as e: print(f"FATAL: Pygame import error: {e}"); input("Exit."); exit()
 
-    # Initialize Pygame modules safely *after* successful import
     try:
         pygame.init()
-        # Font init is now handled within AntSimulation._init_fonts()
-        if pygame.display.get_init() and pygame.font.get_init():
-             print("Pygame and Font modules initialized successfully.")
-        else:
-             raise RuntimeError("Pygame display or font module failed to initialize.")
-
+        if not pygame.display.get_init(): raise RuntimeError("Display module failed")
+        if not pygame.font.get_init(): raise RuntimeError("Font module failed")
+        print("Pygame initialized successfully.")
     except Exception as e:
-         print(f"FATAL: Pygame initialization failed: {e}")
-         # Attempt to quit pygame if partially initialized
-         try: pygame.quit()
-         except: pass
-         input("Press Enter to Exit.")
-         exit()
+         print(f"FATAL: Pygame initialization failed: {e}"); pygame.quit(); input("Exit."); exit()
 
-    # Create and run the simulation
     try:
         simulation = AntSimulation()
-        simulation.run() # run() now handles the main app loop including restarts
+        if simulation.app_running: # Check if font loading succeeded in init
+            simulation.run()
+        else:
+             print("Application cannot start due to initialization errors (e.g., fonts).")
     except Exception as e:
         print("\n--- UNHANDLED EXCEPTION CAUGHT ---")
         import traceback
         traceback.print_exc()
         print("------------------------------------")
         print("An critical error occurred during simulation execution.")
-        # Attempt to quit pygame if simulation crashed
-        try: pygame.quit()
-        except: pass
-        input("Press Enter to Exit.") # Keep window open to see error
+        pygame.quit(); input("Press Enter to Exit.")
 
     print("Simulation process finished.")
