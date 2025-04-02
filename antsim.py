@@ -743,7 +743,7 @@ class WorldGrid:
                 # Apply obstacle mask *before* diffusion calculation
                 arr *= obstacle_mask
                 # Apply Gaussian filter
-                diffused = scipy.ndimage.gaussian_filter(arr, sigma=0.35, mode='constant', cval=0.0)
+                diffused = scipy.ndimage.gaussian_filter(arr, sigma=0.32, mode='constant', cval=0.0)
                 # Update the original array only where there are no obstacles
                 arr[:] = diffused
 
