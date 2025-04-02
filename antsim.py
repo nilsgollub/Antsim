@@ -3532,7 +3532,7 @@ class AntSimulation:
 
     def _draw_grid(self):
         """Draws the static background, pheromones, food, and nest area."""
-        cs = self.cell_size # Local alias for cell size
+        cs = self.cell_size  # Local alias for cell size
 
         # 1. Blit the pre-rendered static background (obstacles)
         self.screen.blit(self.static_background_surface, (0, 0))
@@ -3547,7 +3547,7 @@ class AntSimulation:
             "recruitment": (PHEROMONE_RECRUITMENT_COLOR, self.grid.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX),
         }
 
-        min_alpha_for_draw = 5 # Don't draw extremely faint pheromones
+        min_alpha_for_draw = 5  # Don't draw extremely faint pheromones
 
         for ph_type, (base_col, arr, current_max) in ph_info.items():
             # Create a surface for this pheromone layer with alpha channel
@@ -3570,7 +3570,7 @@ class AntSimulation:
                 # Only draw if alpha is above minimum threshold
                 if alpha >= min_alpha_for_draw:
                     # Final color with calculated alpha
-                    color = (*base_col[:3], alpha) # Use base RGB, calculated A
+                    color = (*base_col[:3], alpha)  # Use base RGB, calculated A
                     # Draw the rectangle onto the pheromone surface
                     pygame.draw.rect(ph_surf, color, (x * cs, y * cs, cs, cs))
 
@@ -3578,7 +3578,7 @@ class AntSimulation:
             self.screen.blit(ph_surf, (0, 0))
 
         # 3. Draw Food
-        min_draw_food = 0.1 # Minimum total food amount to draw a cell
+        min_draw_food = 0.1  # Minimum total food amount to draw a cell
         # Find cells with any significant amount of food
         food_totals = np.sum(self.grid.food, axis=2)
         food_nz_coords = np.argwhere(food_totals > min_draw_food)
@@ -3595,31 +3595,33 @@ class AntSimulation:
                 p = foods[p_idx]
                 total = s + p
                 # Calculate mix ratio (avoid division by zero)
-                sr = s / total if total > 0 else 0.5 # Sugar ratio
-                pr = 1.0 - sr # Protein ratio
+                sr = s / total if total > 0 else 0.5  # Sugar ratio
+                pr = 1.0 - sr  # Protein ratio
                 # Mix colors based on ratio
                 color = (int(s_col[0] * sr + p_col[0] * pr),
                          int(s_col[1] * sr + p_col[1] * pr),
                          int(s_col[2] * sr + p_col[2] * pr))
                 # Draw the food cell
                 pygame.draw.rect(self.screen, color, (x * cs, y * cs, cs, cs))
-            except IndexError: continue # Safety check
+            except IndexError:
+                continue  # Safety check
 
         # 4. Draw Nest Area Highlight (subtle overlay)
         r = NEST_RADIUS
-        nx, ny = self.nest_pos # Use dynamic nest position
-        # Calculate pixel coordinates for the nest area rectangle
-        nest_rect_coords = ((nx - r) * cs, (ny - r) * cs, # Top-left corner
-                           (r * 2 + 1) * cs, (r * 2 + 1) * cs) # Width, Height
-
+        nx, ny = self.nest_pos  # Use dynamic nest position
+        # Calculate pixel coordinates for the nest center
+        center_x = int(nx * cs + cs / 2)
+        center_y = int(ny * cs + cs / 2)
+        # Draw a circle with a transparent overlay
         try:
-            rect = pygame.Rect(nest_rect_coords)
             # Create a temporary surface for the overlay
-            nest_surf = pygame.Surface(rect.size, pygame.SRCALPHA)
+            nest_surf = pygame.Surface((r * 2 * cs, r * 2 * cs), pygame.SRCALPHA)
             # Fill with a very transparent color
-            nest_surf.fill((100, 100, 100, 35)) # Light grey, low alpha
-            # Blit the overlay onto the screen
-            self.screen.blit(nest_surf, rect.topleft)
+            nest_surf.fill((0, 0, 0, 0))  # Clear the surface
+            # Draw a circle onto the surface
+            pygame.draw.circle(nest_surf, (100, 100, 100, 35), (r * cs, r * cs), r * cs)  # Light grey, low alpha
+            # Blit the overlay onto the screen, centered at the nest
+            self.screen.blit(nest_surf, (center_x - r * cs, center_y - r * cs))
         except ValueError:
             # Can happen if rect size is invalid (e.g., negative radius)
             pass
