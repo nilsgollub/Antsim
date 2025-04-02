@@ -1,19 +1,3 @@
-# **Key Changes:**
-#
-# 1.  **Screen Size Determination:** Pygame is initialized *first* to get the available screen size (or a default windowed size).
-# 2.  **Grid Calculation:** `GRID_WIDTH` and `GRID_HEIGHT` are calculated based on the screen dimensions and the desired `CELL_SIZE`. `WIDTH` and `HEIGHT` are recalculated to match the actual grid dimensions.
-# 3.  **Centralized Dimensions:** The calculated dimensions (`grid_width`, `grid_height`, `width`, `height`, `cell_size`) and the calculated `nest_pos` are stored as instance variables in `AntSimulation`.
-# 4.  **Relative Nest/Food:** `NEST_POS` is calculated as the center of the dynamic grid. Initial food placement uses this dynamic center.
-# 5.  **Relative UI:**
-#     *   Buttons are centered horizontally near the top.
-#     *   The legend is positioned relative to the top-right corner.
-#     *   Font sizes are scaled based on the initial screen height.
-# 6.  **Entity Scaling:** Entity drawing radii were already relative to `CELL_SIZE`, so they scale automatically.
-# 7.  **No Dynamic Resizing:** The simulation grid size is determined *at startup* based on the initial window/screen size. Resizing the window *during* the simulation is **not** supported in this version, as resizing the underlying NumPy arrays and simulation state dynamically is very complex. The window will have a fixed size determined at the start.
-# 8.  **Constants:** Constants like `MIN_FOOD_DIST_FROM_NEST` or radii are kept as absolute grid cell distances/sizes for simplicity, but they operate relative to the dynamically calculated `nest_pos`.
-# 9.  **PEP8 Formatting:** Applied throughout.
-
-
 # -*- coding: utf-8 -*-
 
 # --- START OF FILE antsim.py ---
