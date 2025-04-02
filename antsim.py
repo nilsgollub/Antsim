@@ -229,8 +229,8 @@ ANT_ATTRIBUTES = {
         "capacity": 1.5,
         "speed_delay": 0,
         # New: Use gray base color and subtle state colors
-        "color": (100, 100, 255),  # Light Blue for searching
-        "return_color": (100, 255, 100),  # Light Green for returning
+        "color": (200, 200, 200),  # Light Blue for searching
+        "return_color": (200, 255, 200),  # Light Green for returning
         "food_consumption_sugar": 0.02,
         "food_consumption_protein": 0.005,
         "description": "Worker",
@@ -242,8 +242,8 @@ ANT_ATTRIBUTES = {
         "capacity": 0.2,
         "speed_delay": 1,
         # New: Use gray base color and subtle state colors
-        "color": (255, 100, 100),  # Light Red for patrolling
-        "return_color": (255, 180, 100),  # Light Orange for returning
+        "color": (230, 200, 200),  # Light Red for patrolling
+        "return_color": (255, 230, 200),  # Light Orange for returning
         "food_consumption_sugar": 0.025,
         "food_consumption_protein": 0.01,
         "description": "Soldier",
