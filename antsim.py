@@ -1058,44 +1058,75 @@ class Ant:
         # Calculate center pixel position
         pos_px = (int(self.pos[0] * cs + cs / 2),
                   int(self.pos[1] * cs + cs / 2))
-        # Radius based on caste's size_factor (smaller factor = larger radius)
-        radius = max(1, int(cs / self.size_factor))
 
-        # --- Draw Body ---
-        pygame.draw.circle(surface, self.search_color, pos_px, radius)
+        # --- Calculate Body Part Sizes ---
+        # Overall size of the ant (adjust as needed)
+        ant_size = max(2, int(cs / self.size_factor))
+        # Calculate sizes of body parts relative to ant_size
+        head_size = int(ant_size * 0.4)
+        thorax_size = int(ant_size * 0.2)
+        abdomen_size = int(ant_size * 0.6)
+
+        # --- Calculate Body Part Positions ---
+        # Use last_move_direction to orient the ant
+        move_dir_x, move_dir_y = self.last_move_direction
+        # Normalize direction vector (if moving)
+        move_dir_len = (move_dir_x ** 2 + move_dir_y ** 2) ** 0.5
+        if move_dir_len > 0:
+            move_dir_x /= move_dir_len
+            move_dir_y /= move_dir_len
+
+        # --- Draw Abdomen ---
+        # Abdomen is behind the thorax
+        abdomen_offset = int(ant_size * 0.6)
+        abdomen_center = (pos_px[0] - int(move_dir_x * abdomen_offset),
+                          pos_px[1] - int(move_dir_y * abdomen_offset))
+        # Draw abdomen as ellipse
+        abdomen_width = max(1, int(abdomen_size * 0.8))
+        abdomen_height = max(1, int(abdomen_size * 1.2))
+        abdomen_rect = pygame.Rect(abdomen_center[0] - abdomen_width // 2,
+                                   abdomen_center[1] - abdomen_height // 2,
+                                   abdomen_width, abdomen_height)
+        pygame.draw.ellipse(surface, self.return_color, abdomen_rect)
+
+        # --- Draw Thorax ---
+        # Thorax is the center of the ant
+        thorax_width = max(1, int(thorax_size * 1.2))
+        thorax_height = max(1, int(thorax_size * 0.8))
+        thorax_rect = pygame.Rect(pos_px[0] - thorax_width // 2,
+                                  pos_px[1] - thorax_height // 2,
+                                  thorax_width, thorax_height)
+        pygame.draw.ellipse(surface, self.search_color, thorax_rect)
+
+        # --- Draw Head ---
+        # Head is in front of the thorax
+        head_offset = int(ant_size * 0.6)
+        head_center = (pos_px[0] + int(move_dir_x * head_offset),
+                       pos_px[1] + int(move_dir_y * head_offset))
+        # Draw head as circle
+        head_radius = max(1, int(head_size / 2))
+        pygame.draw.circle(surface, (100, 100, 100), head_center, head_radius)
 
         # --- Draw Antennae ---
-        # Calculate antenna base position (slightly offset from center)
-        antenna_base_offset = int(radius * 0.6)
-        antenna_base_pos = (pos_px[0] + int(self.last_move_direction[0] * antenna_base_offset),
-                            pos_px[1] + int(self.last_move_direction[1] * antenna_base_offset))
-
-        # Antenna length (relative to radius)
-        antenna_length = int(radius * 1.2)
-        # Antenna angle (slightly offset from movement direction)
+        # Antennae start at the head
+        antenna_base_pos = head_center
+        antenna_length = int(head_size * 1.2)
         antenna_angle_offset = 0.3  # Radians (about 17 degrees)
 
         # Calculate antenna end positions
         # Left antenna
-        antenna_left_angle = math.atan2(self.last_move_direction[1], self.last_move_direction[0]) + antenna_angle_offset
+        antenna_left_angle = math.atan2(move_dir_y, move_dir_x) + antenna_angle_offset
         antenna_left_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_left_angle)),
                             antenna_base_pos[1] + int(antenna_length * math.sin(antenna_left_angle)))
         # Right antenna
-        antenna_right_angle = math.atan2(self.last_move_direction[1],
-                                         self.last_move_direction[0]) - antenna_angle_offset
+        antenna_right_angle = math.atan2(move_dir_y, move_dir_x) - antenna_angle_offset
         antenna_right_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_right_angle)),
                              antenna_base_pos[1] + int(antenna_length * math.sin(antenna_right_angle)))
 
         # Draw antennae lines
-        antenna_color = (0, 0, 0)  # Black
+        antenna_color = (100, 100, 100)  # Dark gray
         pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)
         pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)
-
-        # --- Draw Head ---
-        head_radius = max(1, int(radius * 0.5))
-        head_pos = (pos_px[0] + int(self.last_move_direction[0] * radius),
-                    pos_px[1] + int(self.last_move_direction[1] * radius))
-        pygame.draw.circle(surface, (0, 0, 0), head_pos, head_radius)
 
     def _update_state(self):
         """Checks conditions and potentially changes the ant's state."""
@@ -2135,7 +2166,6 @@ class Ant:
             self.hp = 0  # Ensure HP doesn't go negative
             # Ant died, could add logic here (e.g., drop negative pheromone?)
 
-
 # --- Queen Class ---
 class Queen:
     """Manages queen state, egg laying, and represents the colony's core."""
@@ -2265,7 +2295,6 @@ class Queen:
             self.hp = 0
             # Queen died, simulation end logic is handled in AntSimulation
 
-
 # --- Enemy Class ---
 class Enemy:
     """Represents an enemy entity that attacks ants and the queen."""
@@ -2373,7 +2402,6 @@ class Enemy:
         if self.hp <= 0:
              self.hp = 0
              # print(f"Enemy died at {self.pos}") # Optional debug
-
 
 # --- Main Simulation Class ---
 class AntSimulation:
@@ -2497,7 +2525,7 @@ class AntSimulation:
         # Drawing Surfaces
         self.static_background_surface = pygame.Surface((self.width, self.height))
         self.latest_frame_surface = None  # For network streaming
-
+        self._prepare_static_background()
         # --- NEW: Spatial Grid ---
         self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)
 
@@ -2627,7 +2655,7 @@ class AntSimulation:
 
         # Reset grid (pass the dynamic nest position)
         self.grid.reset(self.nest_pos)
-        self._prepare_static_background() # Redraw obstacles
+        #self._prepare_static_background() # Redraw obstacles
 
         # Spawn initial entities
         if not self._spawn_initial_entities():
@@ -3980,7 +4008,6 @@ class AntSimulation:
             print("Pygame shut down gracefully.")
         except Exception as e:
             print(f"Error during Pygame quit: {e}")
-
 
 # --- Start Simulation ---
 if __name__ == "__main__":
