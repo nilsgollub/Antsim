@@ -133,7 +133,7 @@ W_PERSISTENCE = 1.5
 W_RANDOM_NOISE = 0.2
 W_NEGATIVE_PHEROMONE = -50.0
 W_RECRUITMENT_PHEROMONE = 200.0
-W_AVOID_NEST_SEARCHING = -80.0 # Penalty for searching near nest
+W_AVOID_NEST_SEARCHING = -150.0 # Penalty for searching near nest
 W_HUNTING_TARGET = 300.0
 W_AVOID_HISTORY = -1000.0  # Strong penalty for revisiting
 
@@ -759,7 +759,7 @@ class WorldGrid:
                 # Apply obstacle mask *before* diffusion calculation
                 arr *= obstacle_mask
                 # Apply Gaussian filter
-                diffused = scipy.ndimage.gaussian_filter(arr, sigma=0.4, mode='constant', cval=0.0)
+                diffused = scipy.ndimage.gaussian_filter(arr, sigma=0.35, mode='constant', cval=0.0)
                 # Update the original array only where there are no obstacles
                 arr[:] = diffused
 
