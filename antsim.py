@@ -158,7 +158,7 @@ WORKER_PATH_HISTORY_LENGTH = 8 # In ticks
 WORKER_STUCK_THRESHOLD = 60 # In ticks
 WORKER_ESCAPE_DURATION = 30 # In ticks
 WORKER_FOOD_CONSUMPTION_INTERVAL = 100 # In ticks
-SOLDIER_PATROL_RADIUS_MULTIPLIER = 4 # Multiplier for NEST_RADIUS
+SOLDIER_PATROL_RADIUS_MULTIPLIER = 0.2 # Multiplier for NEST_RADIUS
 SOLDIER_DEFEND_ALARM_THRESHOLD = 300.0 # Combined alarm/recruit signal
 
 # Brood Cycle Parameters
@@ -231,42 +231,43 @@ class FoodType(Enum):
     PROTEIN = 1
 
 # --- Ant Caste Attributes ---
-# Moved ANT_ATTRIBUTES definition after Enums for clarity
 ANT_ATTRIBUTES = {
     AntCaste.WORKER: {
         "hp": 50,
         "attack": 3,
         "capacity": 1.5,
-        "speed_delay": 0, # Ticks delay between moves
-        "color": (0, 150, 255),        # Search color (Blueish)
-        "return_color": (0, 255, 100), # Return color (Greenish)
+        "speed_delay": 0,
+        # New: Use gray base color and subtle state colors
+        "color": (140, 140, 140),  # Slightly lighter gray for searching
+        "return_color": (100, 100, 100),  # Slightly darker gray for returning
         "food_consumption_sugar": 0.02,
         "food_consumption_protein": 0.005,
         "description": "Worker",
-        # Size factor relative to CELL_SIZE/2 radius
-        "size_factor": 2.5, # Smaller number = larger radius
+        "size_factor": 2.5,
     },
     AntCaste.SOLDIER: {
         "hp": 90,
         "attack": 10,
-        "capacity": 0.2, # Lower capacity
-        "speed_delay": 1, # Slightly slower
-        "color": (0, 50, 255),         # Patrol/Search color (Darker Blue)
-        "return_color": (255, 150, 50),# Return color (Orange/Brown)
+        "capacity": 0.2,
+        "speed_delay": 1,
+        # New: Use gray base color and subtle state colors
+        "color": (130, 130, 130),  # Slightly darker gray for patrolling
+        "return_color": (90, 90, 90),  # Darker gray for returning
         "food_consumption_sugar": 0.025,
         "food_consumption_protein": 0.01,
         "description": "Soldier",
-        "size_factor": 2.0, # Slightly larger than worker
+        "size_factor": 1.8,  # Soldiers are larger
     },
 }
 
 # --- Other Colors ---
-QUEEN_COLOR = (255, 0, 255)         # Magenta
-WORKER_ESCAPE_COLOR = (255, 165, 0) # Orange
-ANT_DEFEND_COLOR = (255, 100, 0)    # Orange-Red (Combined Worker/Soldier)
-ANT_HUNT_COLOR = (0, 200, 150)      # Teal/Cyan (Combined Worker/Soldier)
+ANT_BASE_COLOR = (120, 120, 120)  # Medium gray
+QUEEN_COLOR = (0, 0, 255)  # Blue
+WORKER_ESCAPE_COLOR = (180, 180, 180)  # Light gray
+ANT_DEFEND_COLOR = (160, 160, 160)  # Medium-light gray
+ANT_HUNT_COLOR = (150, 150, 150)  # Medium-light gray
 ENEMY_COLOR = (200, 0, 0)           # Red
-PREY_COLOR = (0, 200, 0)            # Green
+PREY_COLOR = (0, 100, 0)  # Dark green
 FOOD_COLORS = {
     FoodType.SUGAR: (200, 200, 255),    # Light Blue/Purple
     FoodType.PROTEIN: (255, 180, 180),  # Light Red/Pink
