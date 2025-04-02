@@ -58,7 +58,7 @@ USE_SCREEN_PERCENT = 0.5 # Set to a float between 0.1 and 1.0 or None
 #USE_SCREEN_PERCENT = None
 
 # Base size for calculations (adjust for overall detail level)
-CELL_SIZE = 8
+CELL_SIZE = 32
 
 # --- THESE ARE NOW CALCULATED IN AntSimulation.__init__ ---
 # GRID_WIDTH = 150
@@ -71,7 +71,7 @@ CELL_SIZE = 8
 MAP_BG_COLOR = (20, 20, 10)
 
 # Nest (Radius is in grid cells)
-NEST_RADIUS = 6 # Relative to grid center
+NEST_RADIUS = 3 # Relative to grid center
 
 # Food
 NUM_FOOD_TYPES = 2 # len(FoodType) - Hardcoded for clarity below
@@ -220,6 +220,7 @@ class FoodType(Enum):
     SUGAR = 0
     PROTEIN = 1
 
+
 # --- Ant Caste Attributes ---
 ANT_ATTRIBUTES = {
     AntCaste.WORKER: {
@@ -228,8 +229,8 @@ ANT_ATTRIBUTES = {
         "capacity": 1.5,
         "speed_delay": 0,
         # New: Use gray base color and subtle state colors
-        "color": (140, 140, 140),  # Slightly lighter gray for searching
-        "return_color": (100, 100, 100),  # Slightly darker gray for returning
+        "color": (100, 100, 255),  # Light Blue for searching
+        "return_color": (100, 255, 100),  # Light Green for returning
         "food_consumption_sugar": 0.02,
         "food_consumption_protein": 0.005,
         "description": "Worker",
@@ -241,8 +242,8 @@ ANT_ATTRIBUTES = {
         "capacity": 0.2,
         "speed_delay": 1,
         # New: Use gray base color and subtle state colors
-        "color": (130, 130, 130),  # Slightly darker gray for patrolling
-        "return_color": (90, 90, 90),  # Darker gray for returning
+        "color": (255, 100, 100),  # Light Red for patrolling
+        "return_color": (255, 180, 100),  # Light Orange for returning
         "food_consumption_sugar": 0.025,
         "food_consumption_protein": 0.01,
         "description": "Soldier",
@@ -251,11 +252,11 @@ ANT_ATTRIBUTES = {
 }
 
 # --- Other Colors ---
-ANT_BASE_COLOR = (120, 120, 120)  # Medium gray
+ANT_BASE_COLOR = (200, 200, 200)  # Medium gray
 QUEEN_COLOR = (0, 0, 255)  # Blue
-WORKER_ESCAPE_COLOR = (180, 180, 180)  # Light gray
-ANT_DEFEND_COLOR = (160, 160, 160)  # Medium-light gray
-ANT_HUNT_COLOR = (150, 150, 150)  # Medium-light gray
+WORKER_ESCAPE_COLOR = (255, 255, 0)  # Yellow
+ANT_DEFEND_COLOR = (255, 0, 0)  # Red
+ANT_HUNT_COLOR = (0, 255, 255)  # Cyan
 ENEMY_COLOR = (200, 0, 0)  # Red
 PREY_COLOR = (0, 100, 0)  # Dark green
 FOOD_COLORS = {
@@ -1087,7 +1088,7 @@ class Ant:
         abdomen_rect = pygame.Rect(abdomen_center[0] - abdomen_width // 2,
                                    abdomen_center[1] - abdomen_height // 2,
                                    abdomen_width, abdomen_height)
-        pygame.draw.ellipse(surface, self.return_color, abdomen_rect)
+        pygame.draw.ellipse(surface, self.return_color, abdomen_rect)  # Changed
 
         # --- Draw Thorax ---
         # Thorax is the center of the ant
@@ -1096,7 +1097,7 @@ class Ant:
         thorax_rect = pygame.Rect(pos_px[0] - thorax_width // 2,
                                   pos_px[1] - thorax_height // 2,
                                   thorax_width, thorax_height)
-        pygame.draw.ellipse(surface, self.search_color, thorax_rect)
+        pygame.draw.ellipse(surface, self.search_color, thorax_rect)  # Changed
 
         # --- Draw Head ---
         # Head is in front of the thorax
@@ -1105,7 +1106,8 @@ class Ant:
                        pos_px[1] + int(move_dir_y * head_offset))
         # Draw head as circle
         head_radius = max(1, int(head_size / 2))
-        pygame.draw.circle(surface, (100, 100, 100), head_center, head_radius)
+        head_color = tuple(max(0, c - 40) for c in self.search_color[:3])  # Darken color
+        pygame.draw.circle(surface, head_color, head_center, head_radius)  # Changed
 
         # --- Draw Antennae ---
         # Antennae start at the head
@@ -1124,9 +1126,9 @@ class Ant:
                              antenna_base_pos[1] + int(antenna_length * math.sin(antenna_right_angle)))
 
         # Draw antennae lines
-        antenna_color = (100, 100, 100)  # Dark gray
-        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)
-        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)
+        antenna_color = head_color  # Dark gray
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)  # Changed
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)  # Changed
 
     def _update_state(self):
         """Checks conditions and potentially changes the ant's state."""
