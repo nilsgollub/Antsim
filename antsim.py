@@ -58,7 +58,7 @@ USE_SCREEN_PERCENT = 0.5 # Set to a float between 0.1 and 1.0 or None
 #USE_SCREEN_PERCENT = None
 
 # Base size for calculations (adjust for overall detail level)
-CELL_SIZE = 32
+CELL_SIZE = 12
 
 # --- THESE ARE NOW CALCULATED IN AntSimulation.__init__ ---
 # GRID_WIDTH = 150
@@ -1007,7 +1007,6 @@ class Prey:
         radius = max(1, int(cell_size / 2.8))  # Scale radius with cell size
         pygame.draw.circle(surface, self.color, pos_px, radius)
 
-
 # --- Ant Class ---
 class Ant:
     """Represents a worker or soldier ant."""
@@ -1934,6 +1933,30 @@ class Ant:
             if self.state != AntState.DEFENDING:
                 self._switch_state(AntState.DEFENDING, "EnemyContact!")
             return  # Attacked, skip movement this tick
+        # --- Interaction Checks (Attack) ---
+        pos_int = self.pos
+        # Check immediate surroundings (including current cell) for enemies/prey
+        neighbors_int = get_neighbors(pos_int, sim.grid_width, sim.grid_height, include_center=True)
+        grid = sim.grid
+
+        # --- Enemy Interaction ---
+        target_enemy = None
+        for p_int in neighbors_int:
+            enemy = sim.get_enemy_at(p_int)
+            if enemy and enemy.hp > 0:
+                target_enemy = enemy
+                break  # Attack the first enemy found
+
+        if target_enemy:
+            self.attack(target_enemy)
+            grid.add_pheromone(pos_int, P_ALARM_FIGHT, "alarm")  # Signal danger
+            self.stuck_timer = 0  # Reset stuck timer during fight
+            self.target_prey = None  # Stop hunting if fighting
+            self.last_move_info = f"FightEnemy@{target_enemy.pos}"
+            # Ensure state is DEFENDING
+            if self.state != AntState.DEFENDING:
+                self._switch_state(AntState.DEFENDING, "EnemyContact!")
+            return  # Attacked, skip movement this tick
 
         # --- Prey Interaction ---
         target_prey_to_attack = None
@@ -2174,7 +2197,9 @@ class Ant:
             # --- NEW: Speed Boost ---
             self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
             self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
-
+        # --- NEW: Speed Boost ---
+        self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
+        self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
     def take_damage(self, amount, attacker):
         """Reduces HP and potentially drops pheromones upon being hit."""
         if self.hp <= 0: return  # Already dead
@@ -2191,7 +2216,11 @@ class Ant:
         else:
             self.hp = 0  # Ensure HP doesn't go negative
             # Ant died, could add logic here (e.g., drop negative pheromone?)
-
+        # Drop alarm pheromone (less amount than during active fight)
+        grid.add_pheromone(pos_int, P_ALARM_FIGHT * 1.5, "alarm")  # Increased
+        # Drop recruitment pheromone (stronger if soldier)
+        recruit_amount = P_RECRUIT_DAMAGE_SOLDIER * 1.5 if self.caste == AntCaste.SOLDIER else P_RECRUIT_DAMAGE * 1.5  # Increased
+        grid.add_pheromone(pos_int, recruit_amount, "recruitment")
 # --- Queen Class ---
 class Queen:
     """Manages queen state, egg laying, and represents the colony's core."""
@@ -2681,7 +2710,7 @@ class AntSimulation:
 
         # Reset grid (pass the dynamic nest position)
         self.grid.reset(self.nest_pos)
-        #self._prepare_static_background() # Redraw obstacles
+        self._prepare_static_background() # Redraw obstacles
 
         # Spawn initial entities
         if not self._spawn_initial_entities():
