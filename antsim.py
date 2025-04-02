@@ -1051,6 +1051,52 @@ class Ant:
         self.last_known_alarm_pos = None # For DEFENDING state
         self.target_prey: Prey | None = None # For HUNTING state
 
+    def draw(self, surface):
+        """Draws the ant onto the given surface."""
+        sim = self.simulation
+        cs = sim.cell_size
+        # Calculate center pixel position
+        pos_px = (int(self.pos[0] * cs + cs / 2),
+                  int(self.pos[1] * cs + cs / 2))
+        # Radius based on caste's size_factor (smaller factor = larger radius)
+        radius = max(1, int(cs / self.size_factor))
+
+        # --- Draw Body ---
+        pygame.draw.circle(surface, self.search_color, pos_px, radius)
+
+        # --- Draw Antennae ---
+        # Calculate antenna base position (slightly offset from center)
+        antenna_base_offset = int(radius * 0.6)
+        antenna_base_pos = (pos_px[0] + int(self.last_move_direction[0] * antenna_base_offset),
+                            pos_px[1] + int(self.last_move_direction[1] * antenna_base_offset))
+
+        # Antenna length (relative to radius)
+        antenna_length = int(radius * 1.2)
+        # Antenna angle (slightly offset from movement direction)
+        antenna_angle_offset = 0.3  # Radians (about 17 degrees)
+
+        # Calculate antenna end positions
+        # Left antenna
+        antenna_left_angle = math.atan2(self.last_move_direction[1], self.last_move_direction[0]) + antenna_angle_offset
+        antenna_left_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_left_angle)),
+                            antenna_base_pos[1] + int(antenna_length * math.sin(antenna_left_angle)))
+        # Right antenna
+        antenna_right_angle = math.atan2(self.last_move_direction[1],
+                                         self.last_move_direction[0]) - antenna_angle_offset
+        antenna_right_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_right_angle)),
+                             antenna_base_pos[1] + int(antenna_length * math.sin(antenna_right_angle)))
+
+        # Draw antennae lines
+        antenna_color = (0, 0, 0)  # Black
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)
+
+        # --- Draw Head ---
+        head_radius = max(1, int(radius * 0.5))
+        head_pos = (pos_px[0] + int(self.last_move_direction[0] * radius),
+                    pos_px[1] + int(self.last_move_direction[1] * radius))
+        pygame.draw.circle(surface, (0, 0, 0), head_pos, head_radius)
+
     def _update_state(self):
         """Checks conditions and potentially changes the ant's state."""
         sim = self.simulation
@@ -3612,35 +3658,12 @@ class AntSimulation:
 
     def _draw_ants(self):
         """Draws all worker and soldier ants."""
-        cs = self.cell_size
-        cs_half = cs / 2
-
         # Iterate over a copy of the ants list
         for a in list(self.ants):
             # Check if ant still exists and position is valid
             if a not in self.ants or not is_valid_pos(a.pos, self.grid_width, self.grid_height):
                 continue
-
-            pos_px = (int(a.pos[0] * cs + cs_half),
-                      int(a.pos[1] * cs + cs_half))
-            # Radius based on caste's size_factor (smaller factor = larger radius)
-            radius = max(1, int(cs / a.size_factor))
-
-            # Determine color based on state
-            color = a.search_color # Default color
-            if a.state == AntState.RETURNING_TO_NEST: color = a.return_color
-            elif a.state == AntState.ESCAPING: color = WORKER_ESCAPE_COLOR
-            elif a.state == AntState.DEFENDING: color = ANT_DEFEND_COLOR
-            elif a.state == AntState.HUNTING: color = ANT_HUNT_COLOR
-
-            # Draw the ant's main body
-            pygame.draw.circle(self.screen, color, pos_px, radius)
-
-            # Draw carried food indicator if applicable
-            if a.carry_amount > 0 and a.carry_type:
-                food_color = FOOD_COLORS.get(a.carry_type, FOOD_COLOR_MIX) # Get specific color or mix
-                # Draw a smaller circle inside representing food
-                pygame.draw.circle(self.screen, food_color, pos_px, max(1, int(radius * 0.55)))
+            a.draw(self.screen)
 
     def _draw_enemies(self):
          """Draws all enemy entities."""
