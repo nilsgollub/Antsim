@@ -2301,15 +2301,17 @@ class Enemy:
 # --- Main Simulation Class ---
 class AntSimulation:
     """Manages the overall simulation state, entities, drawing, and UI."""
+
     def __init__(self):
-        self.app_running = True # Flag to control the main application loop
-        self.simulation_running = False # Flag to control the current simulation run
+        self.app_running = True  # Flag to control the main application loop
+        self.simulation_running = False  # Flag to control the current simulation run
 
         # --- Pygame and Display Initialization ---
         try:
             pygame.init()
-            if not pygame.display.get_init(): raise RuntimeError("Display module failed")
-            os.environ['SDL_VIDEO_CENTERED'] = '1' # Center window
+            if not pygame.display.get_init():
+                raise RuntimeError("Display module failed")
+            os.environ['SDL_VIDEO_CENTERED'] = '1'  # Center window
             pygame.display.set_caption("Ant Simulation - Responsive")
 
             # Determine Screen/Window Size
@@ -2325,15 +2327,15 @@ class AntSimulation:
             else:
                 target_w, target_h = DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT
                 if USE_SCREEN_PERCENT is not None and 0.1 <= USE_SCREEN_PERCENT <= 1.0:
-                     target_w = int(monitor_width * USE_SCREEN_PERCENT)
-                     target_h = int(monitor_height * USE_SCREEN_PERCENT)
-                     print(f"Using {USE_SCREEN_PERCENT*100:.0f}% of screen: {target_w}x{target_h}")
+                    target_w = int(monitor_width * USE_SCREEN_PERCENT)
+                    target_h = int(monitor_height * USE_SCREEN_PERCENT)
+                    print(f"Using {USE_SCREEN_PERCENT * 100:.0f}% of screen: {target_w}x{target_h}")
                 else:
-                     print(f"Using Default Window Size: {target_w}x{target_h}")
+                    print(f"Using Default Window Size: {target_w}x{target_h}")
                 # Ensure window is not larger than monitor
                 self.screen_width = min(target_w, monitor_width)
                 self.screen_height = min(target_h, monitor_height)
-                display_flags = pygame.DOUBLEBUF # Use default flags for windowed
+                display_flags = pygame.DOUBLEBUF  # Use default flags for windowed
 
             # Set the display mode
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), display_flags)
@@ -2343,7 +2345,7 @@ class AntSimulation:
             print(f"FATAL: Pygame/Display initialization failed: {e}")
             traceback.print_exc()
             self.app_running = False
-            return # Cannot continue
+            return  # Cannot continue
 
         # --- Calculate Grid Dimensions based on Screen ---
         self.cell_size = CELL_SIZE
@@ -2355,24 +2357,28 @@ class AntSimulation:
         self.height = self.grid_height * self.cell_size
         # Adjust screen surface size if calculated grid is smaller than requested window
         if self.width < self.screen.get_width() or self.height < self.screen.get_height():
-             print(f"Adjusting screen surface to grid dimensions: {self.width}x{self.height}")
-             self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
+            print(f"Adjusting screen surface to grid dimensions: {self.width}x{self.height}")
+            self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
 
         # --- Calculate Nest Position (Center of Grid) ---
         self.nest_pos = (self.grid_width // 2, self.grid_height // 2)
-        print(f"Calculated Grid: {self.grid_width}x{self.grid_height}, Cell Size: {self.cell_size}, Nest: {self.nest_pos}")
+        print(
+            f"Calculated Grid: {self.grid_width}x{self.grid_height}, Cell Size: {self.cell_size}, Nest: {self.nest_pos}")
 
         # --- Initialize Fonts (Scaled) ---
-        self.font = None; self.debug_font = None; self.legend_font = None
-        self._init_fonts() # Initialize after screen size is known
-        if not self.app_running: return # Font init might fail
+        self.font = None
+        self.debug_font = None
+        self.legend_font = None
+        self._init_fonts()  # Initialize after screen size is known
+        if not self.app_running:
+            return  # Font init might fail
 
         # --- Simulation State Variables ---
         self.clock = pygame.time.Clock()
         self.grid = WorldGrid(self.grid_width, self.grid_height)
         self.end_game_reason = ""
         self.colony_generation = 0
-        self.ticks = 0.0 # Use float for accumulated time with speed multiplier
+        self.ticks = 0.0  # Use float for accumulated time with speed multiplier
         self.soldier_patrol_radius_sq = (NEST_RADIUS * SOLDIER_PATROL_RADIUS_MULTIPLIER) ** 2
 
         # Entity Lists and Position Lookups
@@ -2381,10 +2387,16 @@ class AntSimulation:
         self.brood = []
         self.prey = []
         self.queen: Queen | None = None
-        self.ant_positions = {} # { (x, y): ant_instance }
+        self.ant_positions = {}  # { (x, y): ant_instance }
         self.enemy_positions = {}
         self.prey_positions = {}
-        self.brood_positions = {} # { (x, y): [brood_item1, brood_item2,...] }
+        self.brood_positions = {}  # { (x, y): [brood_item1, brood_item2,...] }
+
+        # --- NEW: Ant Position Array ---
+        self.max_ants = MAX_ANTS  # Store max ants for array size
+        self.ant_positions_array = np.full((self.max_ants, 2), -1, dtype=np.int16)  # [x, y]
+        self.ant_indices = {}  # {ant_instance: index}
+        self.next_ant_index = 0  # Next free index in the array
 
         # Colony Resources
         self.colony_food_storage_sugar = 0.0
@@ -2403,19 +2415,18 @@ class AntSimulation:
         self.show_legend = False
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
-        self.buttons = self._create_buttons() # Create after screen size is known
+        self.buttons = self._create_buttons()  # Create after screen size is known
 
         # Drawing Surfaces
         self.static_background_surface = pygame.Surface((self.width, self.height))
-        self.latest_frame_surface = None # For network streaming
+        self.latest_frame_surface = None  # For network streaming
 
         # --- Start Optional Network Stream ---
         self._start_streaming_server_if_enabled()
 
         # --- Initial Simulation Reset ---
-        if self.app_running: # Only reset if init was successful
+        if self.app_running:  # Only reset if init was successful
             self._reset_simulation()
-
 
     def _init_fonts(self):
         """Initializes fonts, scaling them based on screen height."""
@@ -2496,7 +2507,6 @@ class AntSimulation:
              )
         streaming_thread.start()
 
-
     def _stop_streaming_server(self):
         """Signals the streaming thread to stop."""
         global streaming_thread, stop_streaming_event
@@ -2507,7 +2517,6 @@ class AntSimulation:
             # Setting the event and daemon=True is often sufficient for shutdown.
             # For more robust shutdown, might need requests to a shutdown endpoint.
             streaming_thread.join(timeout=1) # Optional: Wait briefly for thread
-
 
     def _reset_simulation(self):
         """Resets the simulation state to start a new colony."""
@@ -2606,7 +2615,6 @@ class AntSimulation:
 
         return buttons
 
-
     def _spawn_initial_entities(self):
         """Spawns the queen, initial ants, enemies, and prey."""
         # Queen placement (already determined nest_pos)
@@ -2616,19 +2624,19 @@ class AntSimulation:
             print(f"Queen placed at {self.queen.pos}")
         else:
             print("CRITICAL: Cannot place Queen near calculated nest position.")
-            return False # Cannot proceed without queen
+            return False  # Cannot proceed without queen
 
         # Spawn initial ants around the queen
         spawned_ants = 0
         attempts = 0
-        max_att = INITIAL_ANTS * 25 # Max attempts to spawn ants
+        max_att = INITIAL_ANTS * 25  # Max attempts to spawn ants
         queen_pos_int = self.queen.pos
 
         while spawned_ants < INITIAL_ANTS and attempts < max_att:
             # Spawn in a radius around the queen
-            radius_offset = NEST_RADIUS + 1 # Spawn slightly outside inner nest
+            radius_offset = NEST_RADIUS + 1  # Spawn slightly outside inner nest
             angle = rnd_uniform(0, 2 * math.pi)
-            dist = rnd_uniform(0, radius_offset) # Distance from center
+            dist = rnd_uniform(0, radius_offset)  # Distance from center
             # Calculate offset position
             ox = int(dist * math.cos(angle))
             oy = int(dist * math.sin(angle))
@@ -2645,19 +2653,23 @@ class AntSimulation:
         if spawned_ants < INITIAL_ANTS:
             print(f"Warning: Spawned only {spawned_ants}/{INITIAL_ANTS} initial ants.")
         else:
-             print(f"Spawned {spawned_ants} initial ants.")
+            print(f"Spawned {spawned_ants} initial ants.")
 
         # Spawn initial enemies
         enemies_spawned = sum(1 for _ in range(INITIAL_ENEMIES) if self.spawn_enemy())
-        if enemies_spawned < INITIAL_ENEMIES: print(f"Warning: Spawned only {enemies_spawned}/{INITIAL_ENEMIES} initial enemies.")
-        else: print(f"Spawned {enemies_spawned} initial enemies.")
+        if enemies_spawned < INITIAL_ENEMIES:
+            print(f"Warning: Spawned only {enemies_spawned}/{INITIAL_ENEMIES} initial enemies.")
+        else:
+            print(f"Spawned {enemies_spawned} initial enemies.")
 
         # Spawn initial prey
         prey_spawned = sum(1 for _ in range(INITIAL_PREY) if self.spawn_prey())
-        if prey_spawned < INITIAL_PREY: print(f"Warning: Spawned only {prey_spawned}/{INITIAL_PREY} initial prey.")
-        else: print(f"Spawned {prey_spawned} initial prey.")
+        if prey_spawned < INITIAL_PREY:
+            print(f"Warning: Spawned only {prey_spawned}/{INITIAL_PREY} initial prey.")
+        else:
+            print(f"Spawned {prey_spawned} initial prey.")
 
-        return True # Spawn successful (even if counts are low)
+        return True  # Spawn successful (even if counts are low)
 
     def _find_valid_queen_pos(self):
         """Finds a valid spot for the queen, starting from the calculated center."""
@@ -2694,7 +2706,6 @@ class AntSimulation:
         print("CRITICAL: Could not find any valid spot for Queen near nest center.")
         return None
 
-
     # --- Entity Management (Add, Remove, Update Position) ---
 
     def add_entity(self, entity, entity_list, position_dict):
@@ -2722,31 +2733,41 @@ class AntSimulation:
         # print(f"Failed to add {type(entity).__name__} at {pos_int}") # Debug failed adds
         return False
 
-
     def add_ant(self, pos, caste: AntCaste):
         """Adds a new ant to the simulation if the position is valid and empty."""
         pos_int = tuple(map(int, pos))
         # Basic validity check
         if not is_valid_pos(pos_int, self.grid_width, self.grid_height):
-             # print(f"Invalid pos for ant: {pos_int}") # Debug
-             return False
+            # print(f"Invalid pos for ant: {pos_int}") # Debug
+            return False
 
         # Check obstacle, existing entities (including queen)
         if (not self.grid.is_obstacle(pos_int) and
-            not self.is_ant_at(pos_int) and # Checks regular ants and queen
-            not self.is_enemy_at(pos_int) and
-            not self.is_prey_at(pos_int)):
-             ant = Ant(pos_int, self, caste)
-             self.ants.append(ant)
-             self.ant_positions[pos_int] = ant
-             return True
+                not self.is_ant_at(pos_int) and  # Checks regular ants and queen
+                not self.is_enemy_at(pos_int) and
+                not self.is_prey_at(pos_int)):
+            ant = Ant(pos_int, self, caste)
+            self.ants.append(ant)
+            self.ant_positions[pos_int] = ant
+
+            # --- NEW: Add to Position Array ---
+            if self.next_ant_index < self.max_ants:
+                ant.index = self.next_ant_index
+                self.ant_positions_array[ant.index] = pos_int
+                self.ant_indices[ant] = ant.index
+                self.next_ant_index += 1
+            else:
+                print("Warning: Max ants reached, cannot add more.")
+                return False
+
+            return True
         # else: # Debug failed placement
-             # reason = []
-             # if self.grid.is_obstacle(pos_int): reason.append("obstacle")
-             # if self.is_ant_at(pos_int): reason.append("ant/queen")
-             # if self.is_enemy_at(pos_int): reason.append("enemy")
-             # if self.is_prey_at(pos_int): reason.append("prey")
-             # print(f"Cannot add ant at {pos_int}. Reason: {', '.join(reason)}")
+        # reason = []
+        # if self.grid.is_obstacle(pos_int): reason.append("obstacle")
+        # if self.is_ant_at(pos_int): reason.append("ant/queen")
+        # if self.is_enemy_at(pos_int): reason.append("enemy")
+        # if self.is_prey_at(pos_int): reason.append("prey")
+        # print(f"Cannot add ant at {pos_int}. Reason: {', '.join(reason)}")
         return False
 
     def add_brood(self, brood_item: BroodItem):
@@ -2761,7 +2782,6 @@ class AntSimulation:
             self.brood_positions[pos_int].append(brood_item)
             return True
         return False
-
 
     def remove_entity(self, entity, entity_list, position_dict):
         """Generic helper to remove an entity from lists and position lookups."""
@@ -2796,13 +2816,18 @@ class AntSimulation:
              # print(f"Warning: Attempted to remove entity from position {pos} which was not in dict.")
              pass
 
-
     def update_entity_position(self, entity, old_pos, new_pos):
         """Updates the position dictionary when an entity moves."""
         pos_dict = None
-        if isinstance(entity, Ant): pos_dict = self.ant_positions
-        elif isinstance(entity, Enemy): pos_dict = self.enemy_positions
-        elif isinstance(entity, Prey): pos_dict = self.prey_positions
+        if isinstance(entity, Ant):
+            pos_dict = self.ant_positions
+            # --- NEW: Update Position Array ---
+            if entity.index >= 0:
+                self.ant_positions_array[entity.index] = new_pos
+        elif isinstance(entity, Enemy):
+            pos_dict = self.enemy_positions
+        elif isinstance(entity, Prey):
+            pos_dict = self.prey_positions
         # Brood doesn't move, so no update needed for brood_positions here
 
         if pos_dict is not None:
@@ -2811,7 +2836,6 @@ class AntSimulation:
                 del pos_dict[old_pos]
             # Add to new position
             pos_dict[new_pos] = entity
-
 
     def spawn_enemy(self):
         """Spawns a new enemy at a random valid location far from the nest."""
@@ -2872,13 +2896,23 @@ class AntSimulation:
         # print("Warning: Failed to spawn prey after max tries.") # Optional debug
         return False # Failed
 
-
     # --- Kill Methods ---
 
     def kill_ant(self, ant_to_remove: Ant, reason="unknown"):
         """Removes a dead ant from the simulation."""
         # print(f"Ant died at {ant_to_remove.pos}, reason: {reason}") # Debug
         self.remove_entity(ant_to_remove, self.ants, self.ant_positions)
+
+        # --- NEW: Remove from Position Array ---
+        if ant_to_remove.index >= 0:
+            # Reset position in array
+            self.ant_positions_array[ant_to_remove.index] = [-1, -1]
+            # Remove from index lookup
+            del self.ant_indices[ant_to_remove]
+            # Mark index as free (can be reused)
+            self.next_ant_index = min(self.next_ant_index, ant_to_remove.index)
+            ant_to_remove.index = -1  # Mark as invalid
+
         # Optional: Drop negative pheromone or small amount of food?
 
     def kill_enemy(self, enemy_to_remove: Enemy):
@@ -3253,7 +3287,6 @@ class AntSimulation:
             # print(f"Error drawing hover info: {e}") # Optional debug
             pass
 
-
     def _draw_legend(self):
         """Draws the simulation legend with relative positioning."""
         if not self.legend_font: return # Need font
@@ -3387,7 +3420,6 @@ class AntSimulation:
         # 10. Update the actual display to show the drawn frame
         pygame.display.flip()
 
-
     def _draw_grid(self):
         """Draws the static background, pheromones, food, and nest area."""
         cs = self.cell_size # Local alias for cell size
@@ -3482,7 +3514,6 @@ class AntSimulation:
             # Can happen if rect size is invalid (e.g., negative radius)
             pass
 
-
     def _draw_brood(self):
         """Draws all brood items (eggs, larvae, pupae)."""
         # Iterate over a copy in case list changes during drawing (unlikely)
@@ -3490,7 +3521,6 @@ class AntSimulation:
              # Check if item still exists and position is valid before drawing
              if item in self.brood and is_valid_pos(item.pos, self.grid_width, self.grid_height):
                   item.draw(self.screen) # Call brood item's own draw method
-
 
     def _draw_queen(self):
         """Draws the queen ant."""
@@ -3507,7 +3537,6 @@ class AntSimulation:
         pygame.draw.circle(self.screen, self.queen.color, pos_px, radius)
         # Draw outline
         pygame.draw.circle(self.screen, (255, 255, 255), pos_px, radius, 1) # White outline
-
 
     def _draw_ants(self):
         """Draws all worker and soldier ants."""
@@ -3541,7 +3570,6 @@ class AntSimulation:
                 # Draw a smaller circle inside representing food
                 pygame.draw.circle(self.screen, food_color, pos_px, max(1, int(radius * 0.55)))
 
-
     def _draw_enemies(self):
          """Draws all enemy entities."""
          cs = self.cell_size
@@ -3559,7 +3587,6 @@ class AntSimulation:
              # Draw outline
              pygame.draw.circle(self.screen, (0, 0, 0), pos_px, radius, 1) # Black outline
 
-
     def _draw_prey(self):
         """Draws all prey entities."""
         # Iterate over a copy of the list
@@ -3567,7 +3594,6 @@ class AntSimulation:
              # Check existence and validity before drawing
              if p in self.prey and is_valid_pos(p.pos, self.grid_width, self.grid_height):
                   p.draw(self.screen) # Call prey's own draw method
-
 
     def _draw_buttons(self):
         """Draws the UI buttons."""
@@ -3591,7 +3617,6 @@ class AntSimulation:
             except Exception as e:
                 # Log error but don't crash
                 print(f"Button font render error ('{text}'): {e}")
-
 
     def handle_events(self):
         """Processes Pygame events for user input (quit, keys, mouse clicks)."""
@@ -3686,7 +3711,6 @@ class AntSimulation:
 
         # Return value indicates if speed changed, could be used elsewhere
         return "speed_change" if "speed" in action else action
-
 
     def _show_end_game_dialog(self):
         """Displays a dialog when a simulation run ends, offering restart or quit."""
@@ -3786,7 +3810,6 @@ class AntSimulation:
 
         # If loop exits without choice (e.g., app_running becomes false)
         return "quit"
-
 
     def run(self):
         """Main application loop: handles simulation runs and end dialog."""
