@@ -64,8 +64,8 @@ DEFAULT_WINDOW_WIDTH = 1280
 DEFAULT_WINDOW_HEIGHT = 720
 # Option 3: Use a percentage of the detected screen size (if not fullscreen)
 # Example: USE_SCREEN_PERCENT = 0.8 # Use 80% of the screen width/height
-#USE_SCREEN_PERCENT = 0.5 # Set to a float between 0.1 and 1.0 or None
-USE_SCREEN_PERCENT = None
+USE_SCREEN_PERCENT = 0.5 # Set to a float between 0.1 and 1.0 or None
+#USE_SCREEN_PERCENT = None
 
 # Base size for calculations (adjust for overall detail level)
 CELL_SIZE = 8
@@ -158,8 +158,7 @@ WORKER_PATH_HISTORY_LENGTH = 8 # In ticks
 WORKER_STUCK_THRESHOLD = 60 # In ticks
 WORKER_ESCAPE_DURATION = 30 # In ticks
 WORKER_FOOD_CONSUMPTION_INTERVAL = 100 # In ticks
-# Soldier patrol radius (squared, in grid cells, relative to nest)
-SOLDIER_PATROL_RADIUS_SQ = (NEST_RADIUS * 2) ** 2
+SOLDIER_PATROL_RADIUS_MULTIPLIER = 4 # Multiplier for NEST_RADIUS
 SOLDIER_DEFEND_ALARM_THRESHOLD = 300.0 # Combined alarm/recruit signal
 
 # Brood Cycle Parameters
@@ -1282,7 +1281,8 @@ class Ant:
         nest_pos_int = sim.nest_pos
         dist_sq_current = distance_sq(pos_int, nest_pos_int)
         # Use the configured patrol radius squared
-        patrol_radius_sq = SOLDIER_PATROL_RADIUS_SQ
+        # patrol_radius_sq = SOLDIER_PATROL_RADIUS_SQ # Alte Zeile
+        patrol_radius_sq = sim.soldier_patrol_radius_sq  # Neue Zeile
         # Define outer boundary slightly beyond patrol radius
         outer_boundary_sq = patrol_radius_sq * 1.4
 
@@ -1294,20 +1294,20 @@ class Ant:
             alarm_ph = grid.get_pheromone(n_pos_int, "alarm")
             recr_ph = grid.get_pheromone(n_pos_int, "recruitment")
 
-            score += recr_ph * W_RECRUITMENT_PHEROMONE * 0.7 # Follow recruitment moderately
-            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.5 # Slightly avoid negative
-            score += alarm_ph * W_ALARM_PHEROMONE * 0.5 # Slightly avoid alarm
+            score += recr_ph * W_RECRUITMENT_PHEROMONE * 0.7  # Follow recruitment moderately
+            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.5  # Slightly avoid negative
+            score += alarm_ph * W_ALARM_PHEROMONE * 0.5  # Slightly avoid alarm
 
             # Directional control for patrolling
             dist_sq_next = distance_sq(n_pos_int, nest_pos_int)
 
             # Discourage moving further away if already inside patrol radius
             if dist_sq_current <= patrol_radius_sq and dist_sq_next > dist_sq_current:
-                score += W_NEST_DIRECTION_PATROL # Negative weight discourages moving away
+                score += W_NEST_DIRECTION_PATROL  # Negative weight discourages moving away
 
             # Strong penalty for moving too far from the nest
             if dist_sq_next > outer_boundary_sq:
-                score -= 8000 # Very strong discouragement
+                score -= 8000  # Very strong discouragement
 
             scores[n_pos_int] = score
         return scores
@@ -1648,14 +1648,14 @@ class Ant:
         """Checks conditions and potentially changes the ant's state."""
         sim = self.simulation
         pos_int = self.pos
-        nest_pos_int = sim.nest_pos # Use dynamic nest position
+        nest_pos_int = sim.nest_pos  # Use dynamic nest position
 
         # --- Worker: Opportunity Hunting ---
         # If searching, has no food, no target, and colony needs protein, check for nearby prey
         if (self.caste == AntCaste.WORKER and
-            self.state == AntState.SEARCHING and
-            self.carry_amount == 0 and not self.target_prey and
-            sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5):
+                self.state == AntState.SEARCHING and
+                self.carry_amount == 0 and not self.target_prey and
+                sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5):
 
             # Look for prey in a slightly larger radius
             nearby_prey = sim.find_nearby_prey(pos_int, PREY_FLEE_RADIUS_SQ * 2.5)
@@ -1664,23 +1664,23 @@ class Ant:
                 nearby_prey.sort(key=lambda p: distance_sq(pos_int, p.pos))
                 self.target_prey = nearby_prey[0]
                 self._switch_state(AntState.HUNTING, f"HuntPrey@{self.target_prey.pos}")
-                return # State changed, skip other checks
+                return  # State changed, skip other checks
 
         # --- Soldier: State Management (Patrol/Defend/Hunt) ---
         if (self.caste == AntCaste.SOLDIER and
-            # Don't override these critical states
-            self.state not in [AntState.ESCAPING, AntState.RETURNING_TO_NEST]):
+                # Don't override these critical states
+                self.state not in [AntState.ESCAPING, AntState.RETURNING_TO_NEST]):
 
             # Check local threat level (alarm/recruitment pheromones)
             max_alarm = 0.0
             max_recruit = 0.0
-            search_radius_sq = 5 * 5 # Check nearby cells
+            search_radius_sq = 5 * 5  # Check nearby cells
             grid = sim.grid
             x0, y0 = pos_int
-            min_scan_x = max(0, x0 - int(search_radius_sq**0.5))
-            max_scan_x = min(sim.grid_width - 1, x0 + int(search_radius_sq**0.5))
-            min_scan_y = max(0, y0 - int(search_radius_sq**0.5))
-            max_scan_y = min(sim.grid_height - 1, y0 + int(search_radius_sq**0.5))
+            min_scan_x = max(0, x0 - int(search_radius_sq ** 0.5))
+            max_scan_x = min(sim.grid_width - 1, x0 + int(search_radius_sq ** 0.5))
+            min_scan_y = max(0, y0 - int(search_radius_sq ** 0.5))
+            max_scan_y = min(sim.grid_height - 1, y0 + int(search_radius_sq ** 0.5))
 
             for i in range(min_scan_x, max_scan_x + 1):
                 for j in range(min_scan_y, max_scan_y + 1):
@@ -1692,13 +1692,13 @@ class Ant:
             # Combine signals to estimate threat level
             threat_signal = max_alarm + max_recruit * 0.6
 
-            is_near_nest = distance_sq(pos_int, nest_pos_int) <= SOLDIER_PATROL_RADIUS_SQ
+            is_near_nest = distance_sq(pos_int, nest_pos_int) <= sim.soldier_patrol_radius_sq  # Neue Zeile
 
             # High threat -> Switch to DEFENDING
             if threat_signal > SOLDIER_DEFEND_ALARM_THRESHOLD:
                 if self.state != AntState.DEFENDING:
                     self._switch_state(AntState.DEFENDING, f"ThreatHi({threat_signal:.0f})!")
-                    return # State changed
+                    return  # State changed
 
             # Moderate threat / No active defense -> Check for prey (opportunity hunting for soldiers)
             # Also check if not already hunting
@@ -1708,7 +1708,7 @@ class Ant:
                     nearby_prey.sort(key=lambda p: distance_sq(pos_int, p.pos))
                     self.target_prey = nearby_prey[0]
                     self._switch_state(AntState.HUNTING, f"SHuntPrey@{self.target_prey.pos}")
-                    return # State changed
+                    return  # State changed
 
             # Low threat / Finished Defending -> Revert based on location
             if self.state == AntState.DEFENDING:
@@ -1719,10 +1719,10 @@ class Ant:
                 self._switch_state(AntState.PATROLLING, "NearNest->Patrol")
             elif not is_near_nest and self.state == AntState.PATROLLING:
                 # If wandered too far while patrolling, switch to general searching
-                 self._switch_state(AntState.SEARCHING, "PatrolFar->Search")
+                self._switch_state(AntState.SEARCHING, "PatrolFar->Search")
             elif is_near_nest and self.state == AntState.SEARCHING:
-                 # If searching but wandered back near nest, switch to patrolling
-                 self._switch_state(AntState.PATROLLING, "SearchNear->Patrol")
+                # If searching but wandered back near nest, switch to patrolling
+                self._switch_state(AntState.PATROLLING, "SearchNear->Patrol")
 
         # --- Hunting: Check Target Validity ---
         if self.state == AntState.HUNTING:
@@ -1733,18 +1733,17 @@ class Ant:
                 # Check if prey still exists in the simulation
                 if self.target_prey not in sim.prey:
                     lost_target = True
-                    self.target_prey = None # Clear reference
+                    self.target_prey = None  # Clear reference
                 # Check if prey moved too far away
-                elif distance_sq(pos_int, self.target_prey.pos) > PREY_FLEE_RADIUS_SQ * 4: # Increased chase distance
+                elif distance_sq(pos_int, self.target_prey.pos) > PREY_FLEE_RADIUS_SQ * 4:  # Increased chase distance
                     lost_target = True
 
             if lost_target:
-                self.target_prey = None # Ensure target is cleared
+                self.target_prey = None  # Ensure target is cleared
                 # Revert to default state (Patrol for Soldier, Search for Worker)
                 default_state = AntState.PATROLLING if self.caste == AntCaste.SOLDIER else AntState.SEARCHING
                 self._switch_state(default_state, "LostPreyTarget")
                 # No return here, allow rest of update to proceed
-
 
     def update(self, speed_multiplier):
         """Main update logic for the ant."""
@@ -2377,6 +2376,7 @@ class AntSimulation:
         self.end_game_reason = ""
         self.colony_generation = 0
         self.ticks = 0.0 # Use float for accumulated time with speed multiplier
+        self.soldier_patrol_radius_sq = (NEST_RADIUS * SOLDIER_PATROL_RADIUS_MULTIPLIER) ** 2
 
         # Entity Lists and Position Lookups
         self.ants = []
