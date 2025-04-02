@@ -54,6 +54,12 @@ except ImportError:
         "Install it for streaming: pip install Flask"
     )
 
+try:
+    import scipy.ndimage
+except ImportError:
+    print("FATAL: SciPy is required but not found. Install it: pip install scipy")
+    exit()
+
 # --- Configuration Constants ---
 
 # --- NEW: Screen/Grid Handling ---
@@ -104,12 +110,12 @@ OBSTACLE_COLOR = (100, 100, 100)
 
 # Pheromones
 PHEROMONE_MAX = 1000.0
-PHEROMONE_DECAY = 0.9985
-PHEROMONE_DIFFUSION_RATE = 0.04
-NEGATIVE_PHEROMONE_DECAY = 0.992
-NEGATIVE_PHEROMONE_DIFFUSION_RATE = 0.06
-RECRUITMENT_PHEROMONE_DECAY = 0.96
-RECRUITMENT_PHEROMONE_DIFFUSION_RATE = 0.12
+PHEROMONE_DECAY = 0.9995  # Geänderter Wert
+PHEROMONE_DIFFUSION_RATE = 0.02  # Geänderter Wert
+NEGATIVE_PHEROMONE_DECAY = 0.995  # Geänderter Wert
+NEGATIVE_PHEROMONE_DIFFUSION_RATE = 0.03  # Geänderter Wert
+RECRUITMENT_PHEROMONE_DECAY = 0.98  # Geänderter Wert
+RECRUITMENT_PHEROMONE_DIFFUSION_RATE = 0.03  # Geänderter Wert
 RECRUITMENT_PHEROMONE_MAX = 500.0
 MIN_PHEROMONE_DRAW_THRESHOLD = 0.5  # Optimization: Don't draw tiny amounts
 
@@ -707,11 +713,11 @@ class WorldGrid:
     def update_pheromones(self, speed_multiplier):
         """Applies decay and diffusion to all pheromone maps."""
         effective_multiplier = max(0.0, speed_multiplier)
-        if effective_multiplier == 0.0: return # No update if paused
+        if effective_multiplier == 0.0: return  # No update if paused
 
         # Calculate effective decay factors based on speed multiplier
         # Ensure decay doesn't become too extreme (e.g., pow(0.99, 1000))
-        min_decay_factor = 0.1 # Prevent decay from making values vanish instantly
+        min_decay_factor = 0.1  # Prevent decay from making values vanish instantly
         decay_factor_common = max(min_decay_factor, PHEROMONE_DECAY ** effective_multiplier)
         decay_factor_neg = max(min_decay_factor, NEGATIVE_PHEROMONE_DECAY ** effective_multiplier)
         decay_factor_rec = max(min_decay_factor, RECRUITMENT_PHEROMONE_DECAY ** effective_multiplier)
@@ -730,13 +736,13 @@ class WorldGrid:
         diffusion_rate_rec = RECRUITMENT_PHEROMONE_DIFFUSION_RATE * effective_multiplier
 
         # Clamp diffusion rates to prevent instability (especially at high multipliers)
-        max_diffusion = 0.124 # Max proportion that can diffuse out in one step
+        max_diffusion = 0.124  # Max proportion that can diffuse out in one step
         diffusion_rate_common = min(max_diffusion, max(0.0, diffusion_rate_common))
         diffusion_rate_neg = min(max_diffusion, max(0.0, diffusion_rate_neg))
         diffusion_rate_rec = min(max_diffusion, max(0.0, diffusion_rate_rec))
 
-        # --- Optimized Diffusion using NumPy slicing and rolling ---
-        obstacle_mask = ~self.obstacles # Mask where diffusion *can* occur
+        # --- Optimized Diffusion using Gauss Filter ---
+        obstacle_mask = ~self.obstacles  # Mask where diffusion *can* occur
 
         arrays_rates = [
             (self.pheromones_home, diffusion_rate_common),
@@ -747,39 +753,29 @@ class WorldGrid:
             (self.pheromones_recruitment, diffusion_rate_rec)
         ]
 
-        diffusion_kernel_divisor = 8.0 # Diffusing to 8 neighbours
-
+        # Apply obstacle mask *before* diffusion calculation
         for arr, rate in arrays_rates:
             if rate > 0:
                 # Apply obstacle mask *before* diffusion calculation
-                masked_arr = arr * obstacle_mask
-                # Pad the array to handle boundaries smoothly
-                pad = np.pad(masked_arr, 1, mode='constant')
-                # Sum neighbours using slicing (faster than convolution for simple kernel)
-                neighbors_sum = (pad[:-2, :-2] + pad[:-2, 1:-1] + pad[:-2, 2:] +
-                                 pad[1:-1, :-2] +               pad[1:-1, 2:] +
-                                 pad[2:, :-2] + pad[2:, 1:-1] + pad[2:, 2:])
-
-                # Calculate diffused values: (1-rate)*current + rate*(avg_neighbor)
-                diffused = masked_arr * (1.0 - rate) + (neighbors_sum / diffusion_kernel_divisor) * rate
-
+                arr *= obstacle_mask
+                # Apply Gaussian filter
+                diffused = scipy.ndimage.gaussian_filter(arr, sigma=0.4, mode='constant', cval=0.0)
                 # Update the original array only where there are no obstacles
-                arr[:] = np.where(obstacle_mask, diffused, 0)
-
+                arr[:] = diffused
 
         # Clamp values and remove negligible amounts
-        min_pheromone_threshold = 0.01 # Values below this are set to 0
+        min_pheromone_threshold = 0.01  # Values below this are set to 0
         pheromone_arrays = [
             (self.pheromones_home, PHEROMONE_MAX),
             (self.pheromones_food_sugar, PHEROMONE_MAX),
             (self.pheromones_food_protein, PHEROMONE_MAX),
             (self.pheromones_alarm, PHEROMONE_MAX),
-            (self.pheromones_negative, PHEROMONE_MAX), # Uses standard max
-            (self.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX) # Special max
+            (self.pheromones_negative, PHEROMONE_MAX),  # Uses standard max
+            (self.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX)  # Special max
         ]
         for arr, max_val in pheromone_arrays:
-            np.clip(arr, 0, max_val, out=arr) # Clamp between 0 and max_val
-            arr[arr < min_pheromone_threshold] = 0 # Zero out tiny amounts
+            np.clip(arr, 0, max_val, out=arr)  # Clamp between 0 and max_val
+            arr[arr < min_pheromone_threshold] = 0  # Zero out tiny amounts
 
     def replenish_food(self, nest_pos):
         """Places new food clusters in the world, avoiding the nest."""
@@ -2981,10 +2977,9 @@ class AntSimulation:
                   nearby.append(p)
         return nearby
 
-
     def update(self):
         """Main simulation update step."""
-        global latest_frame_bytes # For streaming
+        global latest_frame_bytes  # For streaming
 
         # Get speed multiplier (0.0 if paused)
         current_multiplier = SPEED_MULTIPLIERS[self.simulation_speed_index]
@@ -2992,7 +2987,7 @@ class AntSimulation:
             # Still increment ticks slightly when paused to allow UI updates
             # and prevent timers from completely freezing if paused for long
             self.ticks += 0.001
-            return # Skip simulation logic if paused
+            return  # Skip simulation logic if paused
 
         # Increment simulation time
         self.ticks += current_multiplier
@@ -3001,7 +2996,7 @@ class AntSimulation:
         if self.queen:
             self.queen.update(current_multiplier)
         # Check if queen died during her update (unlikely but possible)
-        if not self.simulation_running: return # Queen death stops the simulation
+        if not self.simulation_running: return  # Queen death stops the simulation
 
         # --- Update Brood ---
         hatched_pupae = []
@@ -3010,8 +3005,8 @@ class AntSimulation:
         for item in brood_copy:
             # Check if item still exists (might have been removed if invalid?)
             if item in self.brood:
-                hatch_signal = item.update(self.ticks) # Pass current tick
-                if hatch_signal: # Returns self if hatched
+                hatch_signal = item.update(self.ticks)  # Pass current tick
+                if hatch_signal:  # Returns self if hatched
                     hatched_pupae.append(hatch_signal)
 
         # --- Handle Hatched Pupae ---
@@ -3024,9 +3019,12 @@ class AntSimulation:
 
         # --- Update Mobile Entities (Ants, Enemies, Prey) ---
         # Update copies and shuffle for fairness in interaction order
-        ants_copy = list(self.ants); random.shuffle(ants_copy)
-        enemies_copy = list(self.enemies); random.shuffle(enemies_copy)
-        prey_copy = list(self.prey); random.shuffle(prey_copy)
+        ants_copy = list(self.ants);
+        random.shuffle(ants_copy)
+        enemies_copy = list(self.enemies);
+        random.shuffle(enemies_copy)
+        prey_copy = list(self.prey);
+        random.shuffle(prey_copy)
 
         for a in ants_copy:
             # Check if ant still exists and is alive before updating
@@ -3053,10 +3051,11 @@ class AntSimulation:
         # Final check for the Queen
         if self.queen and (self.queen.hp <= 0 or self.grid.is_obstacle(self.queen.pos)):
             self.kill_queen(self.queen)
-        if not self.simulation_running: return # Queen death stops sim
+        if not self.simulation_running: return  # Queen death stops sim
 
         # --- Update Grid Systems ---
-        self.grid.update_pheromones(current_multiplier)
+        if int(self.ticks) % 3 == 0:  # Nur alle 3 Ticks
+            self.grid.update_pheromones(current_multiplier)
 
         # --- Spawning Timers ---
         # Enemy Spawning
@@ -3071,7 +3070,7 @@ class AntSimulation:
         self.prey_spawn_timer += current_multiplier
         if self.prey_spawn_timer >= self.prey_spawn_interval_ticks:
             self.prey_spawn_timer %= self.prey_spawn_interval_ticks
-            max_prey = INITIAL_PREY * 3 # Limit total prey
+            max_prey = INITIAL_PREY * 3  # Limit total prey
             if len(self.prey) < max_prey:
                 self.spawn_prey()
 
@@ -3079,29 +3078,28 @@ class AntSimulation:
         self.food_replenish_timer += current_multiplier
         if self.food_replenish_timer >= self.food_replenish_interval_ticks:
             self.food_replenish_timer %= self.food_replenish_interval_ticks
-            self.grid.replenish_food(self.nest_pos) # Pass nest pos for placement logic
-
+            self.grid.replenish_food(self.nest_pos)  # Pass nest pos for placement logic
 
         # --- Frame Capture for Network Streaming ---
         if ENABLE_NETWORK_STREAM and Flask and streaming_thread and streaming_thread.is_alive():
             # Check if draw() method has produced a surface to stream
             if self.latest_frame_surface:
-                 try:
-                     # Use an in-memory buffer
-                     frame_buffer = io.BytesIO()
-                     # Save the current screen surface (captured in draw()) to the buffer as JPEG
-                     pygame.image.save(self.latest_frame_surface, frame_buffer, ".jpg")
-                     frame_buffer.seek(0) # Rewind buffer to the beginning
-                     # Update the global frame bytes under lock for the streamer thread
-                     with latest_frame_lock:
-                         latest_frame_bytes = frame_buffer.read()
-                 except pygame.error as e:
-                     print(f"Pygame error during frame capture: {e}")
-                 except Exception as e:
-                     print(f"Error capturing frame for streaming: {e}")
-                     # Ensure latest_frame_bytes is None or empty on error?
-                     with latest_frame_lock:
-                          latest_frame_bytes = None
+                try:
+                    # Use an in-memory buffer
+                    frame_buffer = io.BytesIO()
+                    # Save the current screen surface (captured in draw()) to the buffer as JPEG
+                    pygame.image.save(self.latest_frame_surface, frame_buffer, ".jpg")
+                    frame_buffer.seek(0)  # Rewind buffer to the beginning
+                    # Update the global frame bytes under lock for the streamer thread
+                    with latest_frame_lock:
+                        latest_frame_bytes = frame_buffer.read()
+                except pygame.error as e:
+                    print(f"Pygame error during frame capture: {e}")
+                except Exception as e:
+                    print(f"Error capturing frame for streaming: {e}")
+                    # Ensure latest_frame_bytes is None or empty on error?
+                    with latest_frame_lock:
+                        latest_frame_bytes = None
 
     def _spawn_hatched_ant(self, caste: AntCaste, pupa_pos_int: tuple):
         """Tries to spawn a newly hatched ant at or near the pupa's position."""
