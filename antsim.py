@@ -2403,7 +2403,7 @@ class AntSimulation:
 
         # UI State
         self.show_debug_info = True
-        self.show_legend = True # Enable legend by default
+        self.show_legend = False
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
         self.buttons = self._create_buttons() # Create after screen size is known
