@@ -235,6 +235,7 @@ ANT_ATTRIBUTES = {
         "food_consumption_protein": 0.005,
         "description": "Worker",
         "size_factor": 2.5,
+        "head_size_factor": 0.4, # New: Head size factor
     },
     AntCaste.SOLDIER: {
         "hp": 90,
@@ -248,6 +249,7 @@ ANT_ATTRIBUTES = {
         "food_consumption_protein": 0.01,
         "description": "Soldier",
         "size_factor": 1.8,  # Soldiers are larger
+        "head_size_factor": 0.6, # New: Head size factor
     },
 }
 
@@ -1023,6 +1025,7 @@ class Ant:
         self.food_consumption_sugar = attrs["food_consumption_sugar"]
         self.food_consumption_protein = attrs["food_consumption_protein"]
         self.size_factor = attrs["size_factor"] # Used for drawing radius
+        self.head_size_factor = attrs["head_size_factor"]  # New: Head size factor
 
         # State variables
         self.state = AntState.SEARCHING
@@ -1064,7 +1067,7 @@ class Ant:
         # Overall size of the ant (adjust as needed)
         ant_size = max(2, int(cs / self.size_factor))
         # Calculate sizes of body parts relative to ant_size
-        head_size = int(ant_size * 0.4)
+        head_size = int(ant_size * self.head_size_factor) # Changed: Use head_size_factor
         thorax_size = int(ant_size * 0.2)
         abdomen_size = int(ant_size * 0.6)
 
