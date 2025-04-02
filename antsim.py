@@ -64,7 +64,8 @@ DEFAULT_WINDOW_WIDTH = 1280
 DEFAULT_WINDOW_HEIGHT = 720
 # Option 3: Use a percentage of the detected screen size (if not fullscreen)
 # Example: USE_SCREEN_PERCENT = 0.8 # Use 80% of the screen width/height
-USE_SCREEN_PERCENT = None # Set to a float between 0.1 and 1.0 or None
+USE_SCREEN_PERCENT = 0.3 # Set to a float between 0.1 and 1.0 or None
+#USE_SCREEN_PERCENT = None
 
 # Base size for calculations (adjust for overall detail level)
 CELL_SIZE = 8
@@ -149,6 +150,7 @@ P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
 # Ant Parameters
 INITIAL_ANTS = 10
+MAX_ANTS = 200
 QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
 WORKER_MAX_AGE_STDDEV = 2000
@@ -2064,29 +2066,35 @@ class Ant:
 # --- Queen Class ---
 class Queen:
     """Manages queen state, egg laying, and represents the colony's core."""
+
     def __init__(self, pos, sim):
         self.pos = tuple(map(int, pos))
         self.simulation = sim
         self.hp = float(QUEEN_HP)
         self.max_hp = float(QUEEN_HP)
-        self.age = 0.0 # In ticks
-        self.egg_lay_timer_progress = 0.0 # Progress towards next egg lay attempt
-        self.egg_lay_interval_ticks = QUEEN_EGG_LAY_RATE # Ticks between attempts
+        self.age = 0.0  # In ticks
+        self.egg_lay_timer_progress = 0.0  # Progress towards next egg lay attempt
+        self.egg_lay_interval_ticks = QUEEN_EGG_LAY_RATE  # Ticks between attempts
         self.color = QUEEN_COLOR
-        self.attack_power = 0 # Queen doesn't attack
-        self.carry_amount = 0 # Queen doesn't carry food
+        self.attack_power = 0  # Queen doesn't attack
+        self.carry_amount = 0  # Queen doesn't carry food
 
     def update(self, speed_multiplier):
         """Updates queen's age and handles egg laying."""
         sim = self.simulation
-        if speed_multiplier == 0.0: return # Paused
+        if speed_multiplier == 0.0: return  # Paused
 
         self.age += speed_multiplier
 
         # --- Egg Laying ---
         self.egg_lay_timer_progress += speed_multiplier
         if self.egg_lay_timer_progress >= self.egg_lay_interval_ticks:
-            self.egg_lay_timer_progress %= self.egg_lay_interval_ticks # Reset timer
+            self.egg_lay_timer_progress %= self.egg_lay_interval_ticks  # Reset timer
+
+            # --- NEU: Überprüfe, ob die maximale Ameisenanzahl erreicht ist ---
+            if len(sim.ants) >= MAX_ANTS:
+                # print("Maximale Ameisenanzahl erreicht. Königin legt keine Eier mehr.") # Optional: Debug-Ausgabe
+                return  # Beende die Methode, ohne ein Ei zu legen
 
             # Check if colony has enough resources to lay an egg
             needed_s = QUEEN_FOOD_PER_EGG_SUGAR
@@ -2117,13 +2125,17 @@ class Queen:
 
         # Count existing ants
         for a in sim.ants:
-            if a.caste == AntCaste.SOLDIER: soldier_count += 1
-            else: worker_count += 1
+            if a.caste == AntCaste.SOLDIER:
+                soldier_count += 1
+            else:
+                worker_count += 1
         # Count developing brood (larva/pupa)
         for b in sim.brood:
-             if b.stage in [BroodStage.LARVA, BroodStage.PUPA]:
-                  if b.caste == AntCaste.SOLDIER: soldier_count += 1
-                  else: worker_count += 1
+            if b.stage in [BroodStage.LARVA, BroodStage.PUPA]:
+                if b.caste == AntCaste.SOLDIER:
+                    soldier_count += 1
+                else:
+                    worker_count += 1
 
         total_population = soldier_count + worker_count
         current_ratio = 0.0
@@ -2137,9 +2149,9 @@ class Queen:
         if current_ratio < target_ratio:
             # Higher chance for soldier if below target
             return AntCaste.SOLDIER if random.random() < 0.65 else AntCaste.WORKER
-        elif random.random() < 0.04: # Small base chance for soldier even if above ratio
+        elif random.random() < 0.04:  # Small base chance for soldier even if above ratio
             return AntCaste.SOLDIER
-        else: # Default to worker
+        else:  # Default to worker
             return AntCaste.WORKER
 
     def _find_egg_position(self):
@@ -2150,7 +2162,7 @@ class Queen:
         # Filter out obstacles
         valid_spots = [p for p in possible_spots if not sim.grid.is_obstacle(p)]
 
-        if not valid_spots: return None # No valid spots nearby
+        if not valid_spots: return None  # No valid spots nearby
 
         # Get positions currently occupied by other brood items
         brood_positions = sim.get_brood_positions()
@@ -2167,7 +2179,7 @@ class Queen:
 
     def take_damage(self, amount, attacker):
         """Handles queen taking damage, signals high alarm."""
-        if self.hp <= 0: return # Already dead
+        if self.hp <= 0: return  # Already dead
         self.hp -= amount
         if self.hp > 0:
             # Queen taking damage is a major threat
@@ -2177,8 +2189,8 @@ class Queen:
             grid.add_pheromone(pos_int, P_ALARM_FIGHT * 4, "alarm")
             grid.add_pheromone(pos_int, P_RECRUIT_DAMAGE * 4, "recruitment")
         else:
-             self.hp = 0
-             # Queen died, simulation end logic is handled in AntSimulation
+            self.hp = 0
+            # Queen died, simulation end logic is handled in AntSimulation
 
 
 # --- Enemy Class ---
