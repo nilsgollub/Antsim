@@ -64,8 +64,8 @@ DEFAULT_WINDOW_WIDTH = 1280
 DEFAULT_WINDOW_HEIGHT = 720
 # Option 3: Use a percentage of the detected screen size (if not fullscreen)
 # Example: USE_SCREEN_PERCENT = 0.8 # Use 80% of the screen width/height
-USE_SCREEN_PERCENT = 0.3 # Set to a float between 0.1 and 1.0 or None
-#USE_SCREEN_PERCENT = None
+#USE_SCREEN_PERCENT = 0.5 # Set to a float between 0.1 and 1.0 or None
+USE_SCREEN_PERCENT = None
 
 # Base size for calculations (adjust for overall detail level)
 CELL_SIZE = 8
