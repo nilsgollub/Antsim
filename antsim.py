@@ -150,6 +150,9 @@ WORKER_ESCAPE_DURATION = 30 # In ticks
 WORKER_FOOD_CONSUMPTION_INTERVAL = 100 # In ticks
 SOLDIER_PATROL_RADIUS_MULTIPLIER = 0.2 # Multiplier for NEST_RADIUS
 SOLDIER_DEFEND_ALARM_THRESHOLD = 100.0 # Combined alarm/recruit signal
+ANT_SPEED_BOOST_MULTIPLIER = 0.7 # Multiplier for move delay (lower = faster)
+ANT_SPEED_BOOST_DURATION = 10 # Ticks
+
 
 # Brood Cycle Parameters
 QUEEN_EGG_LAY_RATE = 60 # Ticks per attempt
@@ -1042,6 +1045,8 @@ class Ant:
         self.last_move_direction = (0, 0) # (dx, dy) of the last move
         self.stuck_timer = 0 # Ticks spent without moving
         self.escape_timer = 0.0 # Ticks remaining in ESCAPING state
+        self.speed_boost_timer = 0.0  # New: Speed boost timer
+        self.speed_boost_multiplier = 1.0  # New: Speed boost multiplier
 
         # Status/Debug info
         self.last_move_info = "Born" # Reason for the last action/decision
@@ -1197,6 +1202,9 @@ class Ant:
                     nearby_prey.sort(key=lambda p: distance_sq(pos_int, p.pos))
                     self.target_prey = nearby_prey[0]
                     self._switch_state(AntState.HUNTING, f"SHuntPrey@{self.target_prey.pos}")
+                    # --- NEW: Speed Boost ---
+                    self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
+                    self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
                     return  # State changed
 
             # Low threat / Finished Defending -> Revert based on location
@@ -1851,6 +1859,7 @@ class Ant:
     def update(self, speed_multiplier):
         """Main update logic for the ant."""
         sim = self.simulation
+        attrs = ANT_ATTRIBUTES[self.caste]
 
         # --- Aging and Starvation ---
         self.age += speed_multiplier
@@ -1876,6 +1885,15 @@ class Ant:
                 self.hp = 0  # Starved
                 self.last_move_info = "Starved"
                 return  # No further actions
+
+        # --- Speed Boost ---
+        if self.speed_boost_timer > 0:
+            self.speed_boost_timer -= speed_multiplier
+            # Apply boost to move delay
+            self.move_delay_base = int(attrs["speed_delay"] / self.speed_boost_multiplier)
+        else:
+            self.speed_boost_multiplier = 1.0  # Reset multiplier
+            self.move_delay_base = attrs["speed_delay"]  # Reset move delay
 
         # --- State Management ---
         # Handle escape timer countdown
@@ -2153,6 +2171,9 @@ class Ant:
         # Check if target is valid and has take_damage method
         if isinstance(target, (Enemy, Prey)) and hasattr(target, 'take_damage'):
             target.take_damage(self.attack_power, self)
+            # --- NEW: Speed Boost ---
+            self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
+            self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
 
     def take_damage(self, amount, attacker):
         """Reduces HP and potentially drops pheromones upon being hit."""
