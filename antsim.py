@@ -2649,6 +2649,7 @@ class Enemy:
         pygame.draw.ellipse(surface, (0, 0, 0), body_rect, 1) # Black outline
 
 # --- Main Simulation Class ---
+
 class AntSimulation:
     """Manages the overall simulation state, entities, drawing, and UI."""
 
@@ -2766,6 +2767,7 @@ class AntSimulation:
         # UI State
         self.show_debug_info = True
         self.show_legend = False
+        self.show_pheromones = True  # Zustand für Pheromon-Anzeige
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
         self.buttons = self._create_buttons()  # Create after screen size and font are known
@@ -2773,7 +2775,12 @@ class AntSimulation:
         # Drawing Surfaces
         self.static_background_surface = pygame.Surface((self.width, self.height))
         self.latest_frame_surface = None  # For network streaming
-        self.food_dot_rng = random.Random()  # --- NEU: Dedizierter RNG für Futterpunkte ---
+        self.food_dot_rng = random.Random()
+        # --- <<< NEU: Pheromon Cache Surface >>> ---
+        self.pheromone_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        self.pheromone_surface.fill((0, 0, 0, 0))  # Start transparent
+        self.last_pheromone_update_tick = -100  # Initialize to ensure first draw happens
+        # --- <<< ENDE NEU >>> ---
         self._prepare_static_background()  # Draw initial obstacles here
 
         # --- Spatial Grid ---
@@ -2907,6 +2914,11 @@ class AntSimulation:
         self.grid.reset(self.nest_pos)
         self._prepare_static_background() # Redraw obstacles
 
+        # --- <<< NEU: Pheromon Cache zurücksetzen >>> ---
+        self.pheromone_surface.fill((0, 0, 0, 0)) # Clear surface on reset
+        self.last_pheromone_update_tick = -100 # Reset update tick
+        # --- <<< ENDE NEU >>> ---
+
         # Spawn initial entities
         if not self._spawn_initial_entities():
             print("CRITICAL ERROR during simulation reset (entity spawn). Cannot continue.")
@@ -2954,6 +2966,7 @@ class AntSimulation:
         button_definitions = [
             {"text": "Stats", "action": "toggle_debug", "key": pygame.K_d},
             {"text": "Legend", "action": "toggle_legend", "key": pygame.K_l},
+            {"text": "Pheromone", "action": "toggle_pheromones", "key": pygame.K_p}, # <<< NEU
             {"text": "Speed (-)", "action": "speed_down", "key": pygame.K_MINUS},
             {"text": "Speed (+)", "action": "speed_up", "key": pygame.K_PLUS},
             {"text": "Restart", "action": "restart", "key": None}, # No default key
@@ -3838,68 +3851,59 @@ class AntSimulation:
         except Exception as e:
              print(f"ERROR: Unexpected error blitting static background: {e}")
 
-        # --- <<< NEU: Pheromone nur alle N Ticks zeichnen >>> ---
-        if int(self.ticks) % 3 == 0:
-            # 2. Draw Pheromones (using transparent surfaces)
-            ph_info = {
-                "home": (PHEROMONE_HOME_COLOR, self.grid.pheromones_home, PHEROMONE_MAX),
-                "food_sugar": (PHEROMONE_FOOD_SUGAR_COLOR, self.grid.pheromones_food_sugar, PHEROMONE_MAX),
-                "food_protein": (PHEROMONE_FOOD_PROTEIN_COLOR, self.grid.pheromones_food_protein, PHEROMONE_MAX),
-                "alarm": (PHEROMONE_ALARM_COLOR, self.grid.pheromones_alarm, PHEROMONE_MAX),
-                "negative": (PHEROMONE_NEGATIVE_COLOR, self.grid.pheromones_negative, PHEROMONE_MAX),
-                "recruitment": (PHEROMONE_RECRUITMENT_COLOR, self.grid.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX),
-            }
+        # --- <<< NEU: Pheromon-Caching Logik >>> ---
+        current_int_tick = int(self.ticks)
+        # Check if enough ticks passed since last update OR if toggle forces redraw
+        needs_ph_update = (current_int_tick - self.last_pheromone_update_tick >= 3)
 
-            min_alpha_for_draw = 5  # Don't draw extremely faint pheromones
+        if self.show_pheromones:
+            # 2a. Update the pheromone_surface if needed
+            if needs_ph_update:
+                self.last_pheromone_update_tick = current_int_tick # Update time first
+                self.pheromone_surface.fill((0, 0, 0, 0)) # Clear before redraw
 
-            for ph_type, (base_col, arr, current_max) in ph_info.items():
-                try:
-                    # Create a surface for this pheromone layer with alpha channel
-                    # Check for valid dimensions before creating surface
-                    if self.width <= 0 or self.height <= 0:
-                        # print(f"WARN: Invalid dimensions for pheromone surface ({self.width}x{self.height}). Skipping {ph_type}.") # Optional Debug
-                        continue
-                    ph_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                ph_info = {
+                    "home": (PHEROMONE_HOME_COLOR, self.grid.pheromones_home, PHEROMONE_MAX),
+                    "food_sugar": (PHEROMONE_FOOD_SUGAR_COLOR, self.grid.pheromones_food_sugar, PHEROMONE_MAX),
+                    "food_protein": (PHEROMONE_FOOD_PROTEIN_COLOR, self.grid.pheromones_food_protein, PHEROMONE_MAX),
+                    "alarm": (PHEROMONE_ALARM_COLOR, self.grid.pheromones_alarm, PHEROMONE_MAX),
+                    "negative": (PHEROMONE_NEGATIVE_COLOR, self.grid.pheromones_negative, PHEROMONE_MAX),
+                    "recruitment": (PHEROMONE_RECRUITMENT_COLOR, self.grid.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX),
+                }
+                min_alpha_for_draw = 5
 
-                    norm_divisor = max(current_max / 2.5, 1.0)
-                    nz_coords = np.argwhere(arr > MIN_PHEROMONE_DRAW_THRESHOLD) # Threshold applied here
+                for ph_type, (base_col, arr, current_max) in ph_info.items():
+                    try:
+                        norm_divisor = max(current_max / 2.5, 1.0)
+                        nz_coords = np.argwhere(arr > MIN_PHEROMONE_DRAW_THRESHOLD)
 
-                    # Draw rectangles for each significant pheromone cell
-                    for x, y in nz_coords:
-                        if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):
-                            continue
+                        for x, y in nz_coords:
+                            if not (0 <= x < self.grid_width and 0 <= y < self.grid_height): continue
+                            try:
+                                val = arr[x, y]
+                                norm_val = normalize(val, norm_divisor)
+                                alpha_base = base_col[3] if len(base_col) > 3 else 255
+                                alpha = min(max(int(norm_val * alpha_base), 0), 255)
+                                if alpha >= min_alpha_for_draw:
+                                    color = (*base_col[:3], alpha)
+                                    rect_coords = (x * cs, y * cs, cs, cs)
+                                    # --- WICHTIG: Zeichne auf die Pheromon-Surface ---
+                                    pygame.draw.rect(self.pheromone_surface, color, rect_coords)
+                            except IndexError: continue
+                            except (ValueError, TypeError) as e: continue
+                    except (pygame.error, ValueError, Exception) as e:
+                        print(f"ERROR: Exception during {ph_type} pheromone surface update: {e}")
 
-                        try:
-                            val = arr[x, y]
-                            norm_val = normalize(val, norm_divisor)
-                            # Ensure base_col has alpha, default to 255 if not
-                            alpha_base = base_col[3] if len(base_col) > 3 else 255
-                            alpha = min(max(int(norm_val * alpha_base), 0), 255)
+            # 2b. Blit the (potentially updated) pheromone surface onto the screen
+            try:
+                self.screen.blit(self.pheromone_surface, (0, 0))
+            except Exception as e:
+                 print(f"ERROR: Failed to blit pheromone surface: {e}")
+        # --- <<< ENDE NEU: Pheromon-Caching Logik >>> ---
 
-                            if alpha >= min_alpha_for_draw:
-                                color = (*base_col[:3], alpha)
-                                rect_coords = (x * cs, y * cs, cs, cs)
-                                pygame.draw.rect(ph_surf, color, rect_coords)
-                        except IndexError:
-                            # print(f"WARN: Pheromone draw IndexError at {(x,y)} for {ph_type}") # Optional Debug
-                            continue
-                        except (ValueError, TypeError) as e:
-                            # print(f"WARN: Pheromone draw Value/Type Error at {(x,y)} for {ph_type}: {e}") # Optional Debug
-                            continue
-
-                    # Blit this pheromone layer onto the main screen
-                    self.screen.blit(ph_surf, (0, 0))
-                except pygame.error as e:
-                     print(f"ERROR: Pygame error during pheromone drawing for {ph_type}: {e}")
-                except ValueError as e: # Catch potential numpy errors during argwhere or access
-                     print(f"ERROR: ValueError during pheromone processing for {ph_type}: {e}")
-                except Exception as e: # Catch any other unexpected errors
-                     print(f"ERROR: Unexpected error during pheromone drawing for {ph_type}: {e}")
-                     # traceback.print_exc() # Uncomment for full traceback if needed
-
-        # --- <<< ENDE der bedingten Pheromon-Zeichnung >>> ---
 
         # 3. Draw Food (mit stabilen Punkten)
+        # ... (Rest der Food-Zeichnen Logik bleibt unverändert) ...
         food_drawn_count = 0 # Debug counter
         try:
             food_totals = np.sum(self.grid.food, axis=2)
@@ -3915,80 +3919,52 @@ class AntSimulation:
             # --- Verwenden Sie den dedizierten RNG ---
             if not hasattr(self, 'food_dot_rng') or self.food_dot_rng is None:
                 print("ERROR: food_dot_rng not initialized!")
-                # If RNG isn't there, we can't draw food properly, so skip the rest of food drawing.
-                # Alternatively, initialize it here as a fallback, but better to fix __init__
-                # self.food_dot_rng = random.Random()
             else:
                 food_rng = self.food_dot_rng
-
                 for x, y in food_nz_coords:
-                     if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):
-                         continue
-
+                     if not (0 <= x < self.grid_width and 0 <= y < self.grid_height): continue
                      try:
                          foods = self.grid.food[x, y]
                          s = foods[s_idx]
                          p = foods[p_idx]
                          total = s + p
-
                          if total < min_food_for_dot_check: continue
-
                          num_dots = max(1, min(FOOD_MAX_DOTS_PER_CELL, int(total * FOOD_DOTS_PER_UNIT)))
-
                          sr = s / total if total > 0 else 0.5
                          pr = 1.0 - sr
                          color_mixed = (int(s_col[0] * sr + p_col[0] * pr),
                                         int(s_col[1] * sr + p_col[1] * pr),
                                         int(s_col[2] * sr + p_col[2] * pr))
-
                          color = tuple(max(0, min(255, c)) for c in color_mixed)
-
                          cell_x_start = x * cs
                          cell_y_start = y * cs
-
-                         # --- WICHTIG: Seed den RNG für diese Zelle deterministisch ---
-                         # Berechne den Seed (wird wahrscheinlich ein numpy int)
                          cell_seed_np = x * self.grid_height + y
-                         # Konvertiere den Seed explizit in einen Python int! <<< FIX
                          cell_seed_int = int(cell_seed_np)
                          food_rng.seed(cell_seed_int)
-                         # -----------------------------------------------------------
-
-                         # Ensure cell size is large enough for the dot range
                          if cs - (2 * dot_radius) <= 0:
-                              if num_dots > 0: # Only draw if there should be food
+                              if num_dots > 0:
                                  dot_x = cell_x_start + cs / 2
                                  dot_y = cell_y_start + cs / 2
-                                 # Check if coordinates are valid before drawing
                                  if 0 <= int(dot_x) < self.width and 0 <= int(dot_y) < self.height:
                                      pygame.draw.circle(self.screen, color, (int(dot_x), int(dot_y)), dot_radius)
                                      food_drawn_count += 1
-                              continue # Skip the loop below if cell too small
-
+                              continue
                          for i in range(num_dots):
-                             # --- Verwenden Sie den geseedeten RNG für die Position ---
                              dot_x = cell_x_start + food_rng.uniform(dot_radius, cs - dot_radius)
                              dot_y = cell_y_start + food_rng.uniform(dot_radius, cs - dot_radius)
-                             # ------------------------------------------------------
-                             # Check if coordinates are valid before drawing
                              if 0 <= int(dot_x) < self.width and 0 <= int(dot_y) < self.height:
                                  pygame.draw.circle(self.screen, color, (int(dot_x), int(dot_y)), dot_radius)
                                  food_drawn_count += 1
-
-                     except IndexError:
-                         # print(f"WARN: Food draw IndexError at {(x,y)}") # Optional Debug
-                         continue
+                     except IndexError: continue
                      except (ValueError, TypeError) as e:
-                         # Use f-string for better error message formatting
                          print(f"ERROR: Value/Type Error drawing food at {(int(x), int(y))}: Color={color}, Error={e}")
                          continue
-
         except Exception as e:
             print(f"ERROR: General exception during food grid processing: {e}")
-            traceback.print_exc() # Print full traceback for general errors
-
+            traceback.print_exc()
 
         # 4. Draw Nest Area Highlight (subtle overlay)
+        # ... (Nest-Zeichnen Logik bleibt unverändert) ...
         r = NEST_RADIUS
         nx, ny = self.nest_pos
         center_x = int(nx * cs + cs / 2)
@@ -4151,6 +4127,17 @@ class AntSimulation:
             self.show_debug_info = not self.show_debug_info
         elif action == "toggle_legend":
             self.show_legend = not self.show_legend
+        elif action == "toggle_pheromones": # <<< GEÄNDERT >>>
+            self.show_pheromones = not self.show_pheromones
+            if not self.show_pheromones:
+                # Optional: Clear the surface immediately when turning off
+                # to avoid showing the last frame of pheromones briefly
+                # when turning back on before the next update.
+                self.pheromone_surface.fill((0,0,0,0))
+            else:
+                # Force redraw on next available cycle when turning on
+                # by setting last update tick far in the past.
+                self.last_pheromone_update_tick = -100
         elif action == "speed_down":
             current_index = self.simulation_speed_index
             # Find the new index, ensuring it doesn't go below 0
@@ -4342,7 +4329,7 @@ class AntSimulation:
     def run(self):
         """Main application loop: handles simulation runs and end dialog."""
         print("Starting Ant Simulation...")
-        print("Controls: D=Debug | L=Legend | ESC=Quit | +/- = Speed")
+        print("Controls: D=Debug | L=Legend | P=Pheromone | ESC=Quit | +/- = Speed") # <<< Geändert
         if ENABLE_NETWORK_STREAM and Flask:
             # Determine accessible IP (this is a guess, might not be correct)
             hostname = STREAMING_HOST if STREAMING_HOST != "0.0.0.0" else "localhost" # Default to localhost if 0.0.0.0
