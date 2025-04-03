@@ -95,12 +95,12 @@ FOOD_DOT_RADIUS = 1 # Pixel radius of food dots
 
 
 # Obstacles
-NUM_OBSTACLES = 10
-MIN_OBSTACLE_SIZE = 3 # In grid cells (Used by old rectangle method)
-MAX_OBSTACLE_SIZE = 10 # In grid cells (Used by old rectangle method)
+NUM_OBSTACLES = 5
+MIN_OBSTACLE_SIZE = 1 # In grid cells (Used by old rectangle method)
+MAX_OBSTACLE_SIZE = 5 # In grid cells (Used by old rectangle method)
 OBSTACLE_COLOR = (100, 100, 100) # <--- HIER IST DIE DEFINITION
-MIN_OBSTACLE_CLUMPS = 3 # Instead of size, number of clumps per obstacle 'area'
-MAX_OBSTACLE_CLUMPS = 8
+MIN_OBSTACLE_CLUMPS = 1 # Instead of size, number of clumps per obstacle 'area'
+MAX_OBSTACLE_CLUMPS = 5
 MIN_OBSTACLE_CLUMP_RADIUS = 1 # Min radius of a small circle within the obstacle
 MAX_OBSTACLE_CLUMP_RADIUS = 4 # Max radius of a small circle
 OBSTACLE_CLUSTER_SPREAD_RADIUS = 5 # How far clumps spread from the obstacle center
@@ -153,7 +153,7 @@ P_FOOD_SEARCHING = 0.0  # Placeholder/Not used directly
 P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
 # Ant Parameters
-INITIAL_ANTS = 50
+INITIAL_ANTS = 10
 MAX_ANTS = 200
 QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
@@ -184,8 +184,8 @@ LARVA_FOOD_CONSUMPTION_SUGAR = 0.01
 LARVA_FEED_INTERVAL = 50 # Ticks
 
 # Enemy Parameters
-INITIAL_ENEMIES = 10
-ENEMY_HP = 60
+INITIAL_ENEMIES = 1
+ENEMY_HP = 40
 ENEMY_ATTACK = 10
 ENEMY_MOVE_DELAY = 4 # Ticks
 ENEMY_SPAWN_RATE = 1000 # Ticks
