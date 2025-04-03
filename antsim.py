@@ -286,9 +286,9 @@ FOOD_COLORS = {
     FoodType.PROTEIN: (255, 180, 180),  # Light Red/Pink
 }
 FOOD_COLOR_MIX = (230, 200, 230)  # Mix color for UI/Legend
-PHEROMONE_HOME_COLOR = (0, 0, 255, 150)  # Blue (alpha for intensity)
-PHEROMONE_FOOD_SUGAR_COLOR = (180, 180, 255, 150)  # Lighter Blue/Purple (angepasst)
-PHEROMONE_FOOD_PROTEIN_COLOR = (255, 160, 160, 150)  # Lighter Red/Pink (angepasst)
+PHEROMONE_HOME_COLOR = (0, 0, 255, 50)  # Blue (alpha for intensity)
+PHEROMONE_FOOD_SUGAR_COLOR = (180, 180, 255, 50)  # Lighter Blue/Purple (angepasst)
+PHEROMONE_FOOD_PROTEIN_COLOR = (255, 160, 160, 50)  # Lighter Red/Pink (angepasst)
 PHEROMONE_ALARM_COLOR = (255, 0, 0, 180)  # Red
 PHEROMONE_NEGATIVE_COLOR = (150, 150, 150, 100)  # Grey
 PHEROMONE_RECRUITMENT_COLOR = (255, 0, 255, 180)  # Magenta/Pink
