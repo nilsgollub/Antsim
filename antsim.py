@@ -4391,13 +4391,37 @@ if __name__ == "__main__":
     # Basic checks for required libraries
     if 'pygame' not in sys.modules: print("FATAL: Pygame module not imported correctly."); exit()
     if 'numpy' not in sys.modules: print("FATAL: NumPy module not imported correctly."); exit()
+    if 'scipy' not in sys.modules: print("FATAL: SciPy module not imported correctly."); exit()
 
     print(f"Pygame version: {pygame.version.ver}")
     print(f"NumPy version: {np.__version__}")
+    # Use scipy.__version__ for SciPy
+    try:
+        print(f"SciPy version: {scipy.__version__}")
+    except NameError: # Catch if scipy failed to import earlier
+        print("SciPy not fully loaded.")
+
     if Flask: print(f"Flask found. Network streaming enabled: {ENABLE_NETWORK_STREAM}")
     else: print("Flask not found (Network Streaming disabled).")
 
     initialization_success = False
+    simulation_instance = None # Initialize to None
+
+    # --- Profiling Setup ---
+    # Set to True to enable profiling
+    ENABLE_PROFILING = False # <<< Set to False to disable profiling
+    profiler = None
+    if ENABLE_PROFILING:
+        try:
+            import cProfile
+            import pstats
+            profiler = cProfile.Profile()
+            print("INFO: cProfile enabled.")
+        except ImportError:
+            print("WARNING: cProfile module not found. Profiling disabled.")
+            ENABLE_PROFILING = False
+    # ---------------------
+
     try:
         # Pygame initialization is now handled within AntSimulation.__init__
         # We just need to ensure the class can be instantiated.
@@ -4425,8 +4449,27 @@ if __name__ == "__main__":
     if initialization_success:
         print("\nStarting simulation run...")
         try:
+            # --- Start Profiling ---
+            if ENABLE_PROFILING and profiler:
+                print("Starting profiler...")
+                profiler.enable()
+            # -----------------------
+
             # Run the main simulation loop
             simulation_instance.run()
+
+            # --- Stop Profiling ---
+            if ENABLE_PROFILING and profiler:
+                profiler.disable()
+                print("\n--- Profiling Results ---")
+                # Sort by cumulative time spent in function and its sub-calls
+                stats = pstats.Stats(profiler).sort_stats('cumulative')
+                stats.print_stats(40) # Show the top 40 time-consuming functions
+                print("-------------------------\n")
+                # Optional: Save results to a file
+                # stats.dump_stats("simulation_profile.prof")
+                # print("Profiling results saved to simulation_profile.prof")
+            # ----------------------
 
         except Exception as e:
             # Catch unexpected errors during the simulation run
@@ -4445,4 +4488,3 @@ if __name__ == "__main__":
             input("Press Enter to Exit.")
 
     print("\nSimulation process finished.")
-# --- END OF FILE antsim.py ---
