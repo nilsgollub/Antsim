@@ -411,7 +411,6 @@ def normalize(value, max_val):
     norm_val = float(value) / float(max_val)
     return min(1.0, max(0.0, norm_val))
 
-
 # --- Brood Class ---
 class BroodItem:
     """Represents an item of brood (egg, larva, pupa) in the nest."""
@@ -486,7 +485,6 @@ class BroodItem:
         if self.stage == BroodStage.PUPA:
             outline_col = (50, 50, 50) if self.caste == AntCaste.WORKER else (100, 0, 0)
             pygame.draw.circle(surface, outline_col, draw_pos, self.radius, 1)
-
 
 # --- Grid Class ---
 class WorldGrid:
@@ -1009,8 +1007,8 @@ class Prey:
 
 # --- Ant Class ---
 class Ant:
-    """Represents a worker or soldier ant."""
     def __init__(self, pos, simulation, caste: AntCaste):
+        """Initialisiert eine neue Ameise."""
         self.pos = tuple(map(int, pos))
         self.simulation = simulation
         self.caste = caste
@@ -1058,6 +1056,186 @@ class Ant:
         # Targeting/State specific
         self.last_known_alarm_pos = None # For DEFENDING state
         self.target_prey: Prey | None = None # For HUNTING state
+        self.alarm_search_timer = 0  # Timer für die Suche nach Alarm
+        self.alarm_search_radius = 5 # Radius für die zufällige Suche um die Alarmquelle
+        self.initial_alarm_direction = None # Richtung, aus der das Alarmpheromon zuerst wahrgenommen wurde
+        self.visual_range = 6 # Sichtradius in Zellen
+
+    def _update_state(self):
+        """Überprüft Bedingungen und ändert möglicherweise den Zustand der Ameise."""
+        sim = self.simulation
+        pos_int = self.pos
+        nest_pos_int = sim.nest_pos  # Use dynamic nest position
+
+        # --- Worker: Opportunity Hunting ---
+        # If searching, has no food, no target, and colony needs protein, check for nearby prey
+        if (self.caste == AntCaste.WORKER and
+                self.state == AntState.SEARCHING and
+                self.carry_amount == 0 and not self.target_prey and
+                sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5):
+
+            # Look for prey in a slightly larger radius
+            nearby_prey = sim.find_nearby_prey(pos_int, PREY_FLEE_RADIUS_SQ * 2.5)
+            if nearby_prey:
+                # Sort by distance to target to target the closest one
+                nearby_prey.sort(key=lambda p: distance_sq(pos_int, p.pos))
+                self.target_prey = nearby_prey[0]
+                self._switch_state(AntState.HUNTING, f"HuntPrey@{self.target_prey.pos}")
+                return  # State changed, skip other checks
+
+        # --- Soldier: State Management (Patrol/Defend/Hunt) ---
+        if (self.caste == AntCaste.SOLDIER and
+                # Don't override these critical states
+                self.state not in [AntState.ESCAPING, AntState.RETURNING_TO_NEST]):
+
+            # Check local threat level (alarm/recruitment pheromones)
+            max_alarm = 0.0
+            max_recruit = 0.0
+            search_radius_sq = 10 * 10  # Check nearby cells # Increased from 5*5
+            grid = sim.grid
+            x0, y0 = pos_int
+            min_scan_x = max(0, x0 - int(search_radius_sq ** 0.5))
+            max_scan_x = min(sim.grid_width - 1, x0 + int(search_radius_sq ** 0.5))
+            min_scan_y = max(0, y0 - int(search_radius_sq ** 0.5))
+            max_scan_y = min(sim.grid_height - 1, y0 + int(search_radius_sq ** 0.5))
+
+            for i in range(min_scan_x, max_scan_x + 1):
+                for j in range(min_scan_y, max_scan_y + 1):
+                    p_int = (i, j)
+                    if distance_sq(pos_int, p_int) <= search_radius_sq:
+                        max_alarm = max(max_alarm, grid.get_pheromone(p_int, "alarm"))
+                        max_recruit = max(max_recruit, grid.get_pheromone(p_int, "recruitment"))
+
+            # Combine signals to estimate threat level
+            threat_signal = max_alarm + max_recruit * 0.6
+
+            is_near_nest = distance_sq(pos_int, nest_pos_int) <= sim.soldier_patrol_radius_sq  # Neue Zeile
+
+            # High threat -> Switch to DEFENDING
+            if threat_signal > SOLDIER_DEFEND_ALARM_THRESHOLD * 0.7:  # Reduced threshold
+                if self.state != AntState.DEFENDING:
+                    self._switch_state(AntState.DEFENDING, f"ThreatHi({threat_signal:.0f})!")
+
+                    # Reset alarm search timer and direction
+                    self.alarm_search_timer = 0
+                    self.last_known_alarm_pos = pos_int  # Starte die Suche an der aktuellen Position
+
+                    return  # State changed
+
+    def _score_moves_defending(self, valid_neighbors_int):
+        """Bewertet Züge für Ameisen, die sich gegen Bedrohungen verteidigen (folgt Alarm/Rekrutierung)."""
+        scores = {}
+        sim = self.simulation
+        grid = sim.grid
+        pos_int = self.pos
+
+        # --- Update Target Location / Initialen Alarm zurücksetzen, damit der nicht immer wieder zurück will ----
+        # Prüfe, ob der Timer abgelaufen ist oder die vorherige Quelle durch eine Stärkere ersetzt werden soll (Abfrage)
+        if self.alarm_search_timer > 150:  # Timer ausgelaufen oder die Quelle ist zu alt
+            self.last_known_alarm_pos = None  # Verwerfe die vorherige Alarmquelle
+            self.initial_alarm_direction = None
+            self.alarm_search_timer = 0  # Timer zurücksetzen
+
+        # --- Update Target Location ---
+        # Occasionally re-evaluate the strongest signal source nearby
+        if self.last_known_alarm_pos is None or random.random() < 0.2:  # Re-scan periodically
+            best_signal_pos = None
+            max_signal_strength = -1.0
+            # Scan a small radius around the ant
+            search_radius_sq = 10 * 10  # Increased from 6*6
+            x0, y0 = pos_int
+            min_scan_x = max(0, x0 - int(search_radius_sq ** 0.5))
+            max_scan_x = min(sim.grid_width - 1, x0 + int(search_radius_sq ** 0.5))
+            min_scan_y = max(0, y0 - int(search_radius_sq ** 0.5))
+            max_scan_y = min(sim.grid_height - 1, y0 + int(search_radius_sq ** 0.5))
+
+            for i in range(min_scan_x, max_scan_x + 1):
+                for j in range(min_scan_y, max_scan_y + 1):
+                    p_int = (i, j)
+                    if distance_sq(pos_int, p_int) <= search_radius_sq:
+                        # Combine alarm and recruitment signals, weighted
+                        signal = (grid.get_pheromone(p_int, "alarm") * 1.2 +
+                                  grid.get_pheromone(p_int, "recruitment") * 0.8)
+                        # Add bonus if an enemy is directly visible at the location
+                        if sim.get_enemy_at(p_int):
+                            signal += 600  # Strong incentive to move towards visible enemy
+
+                        if signal > max_signal_strength:
+                            max_signal_strength = signal
+                            best_signal_pos = p_int
+
+            # Update the target if a strong signal was found
+            if max_signal_strength > 80.0:  # Threshold to consider it a valid target
+                self.last_known_alarm_pos = best_signal_pos
+            else:
+                # Signal faded or too weak, lose the target
+                self.last_known_alarm_pos = None  # Will cause state change later
+
+        # --- Score Moves Towards Target ---
+        target_pos = self.last_known_alarm_pos
+        dist_now_sq = distance_sq(pos_int, target_pos) if target_pos else float('inf')
+
+        for n_pos_int in valid_neighbors_int:
+            score = self._score_moves_base(n_pos_int)
+
+            # Get pheromones at the potential next cell
+            alarm_ph = grid.get_pheromone(n_pos_int, "alarm")
+            recr_ph = grid.get_pheromone(n_pos_int, "recruitment")
+
+            # Very high bonus for moving onto a cell with an enemy
+            enemy_at_n_pos = sim.get_enemy_at(n_pos_int)
+            if enemy_at_n_pos:
+                score += 15000  # Engage immediately
+
+            # Wenn eine zufällige Suche gestartet wurde
+            if target_pos:
+                dist_next_sq = distance_sq(n_pos_int, target_pos)
+                # Bonus für getting closer to the target
+                if dist_next_sq < dist_now_sq:
+                    score += W_ALARM_SOURCE_DEFEND * 1.5  # Increased
+                else:
+                    # Zufälliges suchen im Umkreis
+                    random_x = random.randint(-self.alarm_search_radius, self.alarm_search_radius)
+                    random_y = random.randint(-self.alarm_search_radius, self.alarm_search_radius)
+                    search = (random_x + pos_int[0], random_y + pos_int[1])
+                    dis_rand_sq = distance_sq(n_pos_int, search)
+                    score += dis_rand_sq * 0.5
+
+            # General attraction to recruitment and *slight repulsion* from high alarm
+            # (move towards the *source*/gradient, not necessarily the highest concentration itself)
+            score += recr_ph * W_RECRUITMENT_PHEROMONE * 1.5  # Increased
+            score += alarm_ph * W_ALARM_PHEROMONE * -1.0  # Slight negative weight for alarm itself
+
+            # Visuelle Wahrnehmung
+            visual_score = self._calculate_visual_score(n_pos_int)
+            score += visual_score
+
+            scores[n_pos_int] = score
+        return scores
+
+    def _calculate_visual_score(self, neighbor_pos_int):
+        """Berechnet einen Score basierend auf der Sichtbarkeit von Feinden (iteriert über Feinde)."""
+        sim = self.simulation
+        pos_int = self.pos
+        score = 0.0
+
+        # Durchlaufe die Liste der Feinde
+        for enemy in sim.enemies:
+            if enemy.hp <= 0: continue  # Überspringe tote Feinde
+
+            enemy_pos = enemy.pos  # Position des Gegners
+
+            # Berechne die quadratische Distanz zwischen dem Nachbarfeld und dem Feind
+            dist_sq = distance_sq(neighbor_pos_int, enemy_pos)
+
+            # Überprüfe, ob sich der Feind im Sichtfeld befindet (quadratische Distanzvergleich für Performance)
+            if dist_sq <= self.visual_range ** 2:
+                # Der Feind ist sichtbar!  Erhöhe den Score, gewichtet mit der Nähe
+                # Höhere Punktzahl, wenn der Feind näher ist
+                score += 1000.0 / (dist_sq + 1)  # Experimentiere mit der Gewichtungsfunktion
+                # Optional: Füge Code hinzu, um die Sicht zu blockieren (z. B. Raycasting)
+
+        return score
 
     def draw(self, surface):
         """Draws the ant onto the given surface."""
@@ -1526,11 +1704,18 @@ class Ant:
         return scores
 
     def _score_moves_defending(self, valid_neighbors_int):
-        """Scores moves for ants defending against threats (following alarm/recruit)."""
+        """Bewertet Züge für Ameisen, die sich gegen Bedrohungen verteidigen (folgt Alarm/Rekrutierung)."""
         scores = {}
         sim = self.simulation
         grid = sim.grid
         pos_int = self.pos
+
+        # --- Update Target Location / Initialen Alarm zurücksetzen, damit der nicht immer wieder zurück will ----
+        # Prüfe, ob der Timer abgelaufen ist oder die vorherige Quelle durch eine Stärkere ersetzt werden soll (Abfrage)
+        if self.alarm_search_timer > 150:  # Timer ausgelaufen oder die Quelle ist zu alt
+            self.last_known_alarm_pos = None  # Verwerfe die vorherige Alarmquelle
+            self.initial_alarm_direction = None
+            self.alarm_search_timer = 0  # Timer zurücksetzen
 
         # --- Update Target Location ---
         # Occasionally re-evaluate the strongest signal source nearby
@@ -1583,17 +1768,28 @@ class Ant:
             if enemy_at_n_pos:
                 score += 15000  # Engage immediately
 
-            # If we have a target position (strong signal source)
+            # Wenn eine zufällige Suche gestartet wurde
             if target_pos:
                 dist_next_sq = distance_sq(n_pos_int, target_pos)
-                # Bonus for getting closer to the target
+                # Bonus für getting closer to the target
                 if dist_next_sq < dist_now_sq:
                     score += W_ALARM_SOURCE_DEFEND * 1.5  # Increased
+                else:
+                    # Zufälliges suchen im Umkreis
+                    random_x = random.randint(-self.alarm_search_radius, self.alarm_search_radius)
+                    random_y = random.randint(-self.alarm_search_radius, self.alarm_search_radius)
+                    search = (random_x + pos_int[0], random_y + pos_int[1])
+                    dis_rand_sq = distance_sq(n_pos_int, search)
+                    score += dis_rand_sq * 0.5
 
             # General attraction to recruitment and *slight repulsion* from high alarm
             # (move towards the *source*/gradient, not necessarily the highest concentration itself)
             score += recr_ph * W_RECRUITMENT_PHEROMONE * 1.5  # Increased
             score += alarm_ph * W_ALARM_PHEROMONE * -1.0  # Slight negative weight for alarm itself
+
+            # Visuelle Wahrnehmung
+            visual_score = self._calculate_visual_score(n_pos_int)
+            score += visual_score
 
             scores[n_pos_int] = score
         return scores
@@ -2221,6 +2417,7 @@ class Ant:
         # Drop recruitment pheromone (stronger if soldier)
         recruit_amount = P_RECRUIT_DAMAGE_SOLDIER * 1.5 if self.caste == AntCaste.SOLDIER else P_RECRUIT_DAMAGE * 1.5  # Increased
         grid.add_pheromone(pos_int, recruit_amount, "recruitment")
+
 # --- Queen Class ---
 class Queen:
     """Manages queen state, egg laying, and represents the colony's core."""
