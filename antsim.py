@@ -115,7 +115,7 @@ NEGATIVE_PHEROMONE_DIFFUSION_RATE = 0.03  # Geänderter Wert
 RECRUITMENT_PHEROMONE_DECAY = 0.98  # Geänderter Wert
 RECRUITMENT_PHEROMONE_DIFFUSION_RATE = 0.03  # Geänderter Wert
 RECRUITMENT_PHEROMONE_MAX = 500.0
-MIN_PHEROMONE_DRAW_THRESHOLD = 0.5  # Optimization: Don't draw tiny amounts
+MIN_PHEROMONE_DRAW_THRESHOLD = 1.5  # Optimization: Don't draw tiny amounts
 
 # Weights (Influence on ant decision-making)
 W_HOME_PHEROMONE_RETURN = 45.0
@@ -3812,63 +3812,66 @@ class AntSimulation:
         except Exception as e:
              print(f"ERROR: Unexpected error blitting static background: {e}")
 
-        # 2. Draw Pheromones (using transparent surfaces)
-        ph_info = {
-            "home": (PHEROMONE_HOME_COLOR, self.grid.pheromones_home, PHEROMONE_MAX),
-            "food_sugar": (PHEROMONE_FOOD_SUGAR_COLOR, self.grid.pheromones_food_sugar, PHEROMONE_MAX),
-            "food_protein": (PHEROMONE_FOOD_PROTEIN_COLOR, self.grid.pheromones_food_protein, PHEROMONE_MAX),
-            "alarm": (PHEROMONE_ALARM_COLOR, self.grid.pheromones_alarm, PHEROMONE_MAX),
-            "negative": (PHEROMONE_NEGATIVE_COLOR, self.grid.pheromones_negative, PHEROMONE_MAX),
-            "recruitment": (PHEROMONE_RECRUITMENT_COLOR, self.grid.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX),
-        }
+        # --- <<< NEU: Pheromone nur alle N Ticks zeichnen >>> ---
+        if int(self.ticks) % 3 == 0:
+            # 2. Draw Pheromones (using transparent surfaces)
+            ph_info = {
+                "home": (PHEROMONE_HOME_COLOR, self.grid.pheromones_home, PHEROMONE_MAX),
+                "food_sugar": (PHEROMONE_FOOD_SUGAR_COLOR, self.grid.pheromones_food_sugar, PHEROMONE_MAX),
+                "food_protein": (PHEROMONE_FOOD_PROTEIN_COLOR, self.grid.pheromones_food_protein, PHEROMONE_MAX),
+                "alarm": (PHEROMONE_ALARM_COLOR, self.grid.pheromones_alarm, PHEROMONE_MAX),
+                "negative": (PHEROMONE_NEGATIVE_COLOR, self.grid.pheromones_negative, PHEROMONE_MAX),
+                "recruitment": (PHEROMONE_RECRUITMENT_COLOR, self.grid.pheromones_recruitment, RECRUITMENT_PHEROMONE_MAX),
+            }
 
-        min_alpha_for_draw = 5  # Don't draw extremely faint pheromones
+            min_alpha_for_draw = 5  # Don't draw extremely faint pheromones
 
-        for ph_type, (base_col, arr, current_max) in ph_info.items():
-            try:
-                # Create a surface for this pheromone layer with alpha channel
-                # Check for valid dimensions before creating surface
-                if self.width <= 0 or self.height <= 0:
-                    # print(f"WARN: Invalid dimensions for pheromone surface ({self.width}x{self.height}). Skipping {ph_type}.") # Optional Debug
-                    continue
-                ph_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-
-                norm_divisor = max(current_max / 2.5, 1.0)
-                nz_coords = np.argwhere(arr > MIN_PHEROMONE_DRAW_THRESHOLD)
-
-                # Draw rectangles for each significant pheromone cell
-                for x, y in nz_coords:
-                    if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):
+            for ph_type, (base_col, arr, current_max) in ph_info.items():
+                try:
+                    # Create a surface for this pheromone layer with alpha channel
+                    # Check for valid dimensions before creating surface
+                    if self.width <= 0 or self.height <= 0:
+                        # print(f"WARN: Invalid dimensions for pheromone surface ({self.width}x{self.height}). Skipping {ph_type}.") # Optional Debug
                         continue
+                    ph_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
-                    try:
-                        val = arr[x, y]
-                        norm_val = normalize(val, norm_divisor)
-                        # Ensure base_col has alpha, default to 255 if not
-                        alpha_base = base_col[3] if len(base_col) > 3 else 255
-                        alpha = min(max(int(norm_val * alpha_base), 0), 255)
+                    norm_divisor = max(current_max / 2.5, 1.0)
+                    nz_coords = np.argwhere(arr > MIN_PHEROMONE_DRAW_THRESHOLD) # Threshold applied here
 
-                        if alpha >= min_alpha_for_draw:
-                            color = (*base_col[:3], alpha)
-                            rect_coords = (x * cs, y * cs, cs, cs)
-                            pygame.draw.rect(ph_surf, color, rect_coords)
-                    except IndexError:
-                        # print(f"WARN: Pheromone draw IndexError at {(x,y)} for {ph_type}") # Optional Debug
-                        continue
-                    except (ValueError, TypeError) as e:
-                        # print(f"WARN: Pheromone draw Value/Type Error at {(x,y)} for {ph_type}: {e}") # Optional Debug
-                        continue
+                    # Draw rectangles for each significant pheromone cell
+                    for x, y in nz_coords:
+                        if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):
+                            continue
 
-                # Blit this pheromone layer onto the main screen
-                self.screen.blit(ph_surf, (0, 0))
-            except pygame.error as e:
-                 print(f"ERROR: Pygame error during pheromone drawing for {ph_type}: {e}")
-            except ValueError as e: # Catch potential numpy errors during argwhere or access
-                 print(f"ERROR: ValueError during pheromone processing for {ph_type}: {e}")
-            except Exception as e: # Catch any other unexpected errors
-                 print(f"ERROR: Unexpected error during pheromone drawing for {ph_type}: {e}")
-                 # traceback.print_exc() # Uncomment for full traceback if needed
+                        try:
+                            val = arr[x, y]
+                            norm_val = normalize(val, norm_divisor)
+                            # Ensure base_col has alpha, default to 255 if not
+                            alpha_base = base_col[3] if len(base_col) > 3 else 255
+                            alpha = min(max(int(norm_val * alpha_base), 0), 255)
 
+                            if alpha >= min_alpha_for_draw:
+                                color = (*base_col[:3], alpha)
+                                rect_coords = (x * cs, y * cs, cs, cs)
+                                pygame.draw.rect(ph_surf, color, rect_coords)
+                        except IndexError:
+                            # print(f"WARN: Pheromone draw IndexError at {(x,y)} for {ph_type}") # Optional Debug
+                            continue
+                        except (ValueError, TypeError) as e:
+                            # print(f"WARN: Pheromone draw Value/Type Error at {(x,y)} for {ph_type}: {e}") # Optional Debug
+                            continue
+
+                    # Blit this pheromone layer onto the main screen
+                    self.screen.blit(ph_surf, (0, 0))
+                except pygame.error as e:
+                     print(f"ERROR: Pygame error during pheromone drawing for {ph_type}: {e}")
+                except ValueError as e: # Catch potential numpy errors during argwhere or access
+                     print(f"ERROR: ValueError during pheromone processing for {ph_type}: {e}")
+                except Exception as e: # Catch any other unexpected errors
+                     print(f"ERROR: Unexpected error during pheromone drawing for {ph_type}: {e}")
+                     # traceback.print_exc() # Uncomment for full traceback if needed
+
+        # --- <<< ENDE der bedingten Pheromon-Zeichnung >>> ---
 
         # 3. Draw Food (mit stabilen Punkten)
         food_drawn_count = 0 # Debug counter
