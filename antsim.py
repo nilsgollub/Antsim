@@ -85,12 +85,26 @@ INITIAL_COLONY_FOOD_PROTEIN = 200.0
 RICH_FOOD_THRESHOLD = 50.0
 CRITICAL_FOOD_THRESHOLD = 25.0
 FOOD_REPLENISH_RATE = 1200  # Intervall in Ticks
+# Food drawing change - adjust how many dots per unit of food
+FOOD_DOTS_PER_UNIT = 0.15 # Lower value = more dots per food unit. Adjust for density.
+FOOD_MAX_DOTS_PER_CELL = 25 # Limit dots per cell for performance/visuals
+FOOD_DOT_RADIUS = 1 # Pixel radius of food dots# Food drawing change - adjust how many dots per unit of food
+FOOD_DOTS_PER_UNIT = 0.15 # Lower value = more dots per food unit. Adjust for density.
+FOOD_MAX_DOTS_PER_CELL = 25 # Limit dots per cell for performance/visuals
+FOOD_DOT_RADIUS = 1 # Pixel radius of food dots
+
 
 # Obstacles
 NUM_OBSTACLES = 10
-MIN_OBSTACLE_SIZE = 3 # In grid cells
-MAX_OBSTACLE_SIZE = 10 # In grid cells
-OBSTACLE_COLOR = (100, 100, 100)
+MIN_OBSTACLE_SIZE = 3 # In grid cells (Used by old rectangle method)
+MAX_OBSTACLE_SIZE = 10 # In grid cells (Used by old rectangle method)
+OBSTACLE_COLOR = (100, 100, 100) # <--- HIER IST DIE DEFINITION
+MIN_OBSTACLE_CLUMPS = 3 # Instead of size, number of clumps per obstacle 'area'
+MAX_OBSTACLE_CLUMPS = 8
+MIN_OBSTACLE_CLUMP_RADIUS = 1 # Min radius of a small circle within the obstacle
+MAX_OBSTACLE_CLUMP_RADIUS = 4 # Max radius of a small circle
+OBSTACLE_CLUSTER_SPREAD_RADIUS = 5 # How far clumps spread from the obstacle center
+OBSTACLE_COLOR_VARIATION = 15 # +/- range for obstacle cell color variation
 
 # Pheromones
 PHEROMONE_MAX = 1000.0
@@ -281,6 +295,10 @@ PHEROMONE_RECRUITMENT_COLOR = (255, 0, 255, 180)  # Magenta/Pink
 EGG_COLOR = (255, 255, 255, 200)  # White (alpha for density)
 LARVA_COLOR = (255, 255, 200, 220)  # Pale Yellow
 PUPA_COLOR = (200, 180, 150, 220)  # Beige/Brown
+ATTACK_INDICATOR_COLOR_ANT = (255, 255, 100, 180) # Yellowish flash for ant attacks
+ATTACK_INDICATOR_COLOR_ENEMY = (255, 100, 100, 180) # Reddish flash for enemy attacks
+ATTACK_INDICATOR_DURATION_TICKS = 6 # How many ticks the indicator lasts (adjust as needed)
+OBSTACLE_COLOR_VARIATION = 15 # +/- range for obstacle cell color variation
 
 # UI Colors
 BUTTON_COLOR = (80, 80, 150)
@@ -580,58 +598,94 @@ class WorldGrid:
         print(f"Placed {INITIAL_FOOD_CLUSTERS} initial food clusters around nest {nest_pos_int}.")
 
     def place_obstacles(self, nest_pos):
-        """Places obstacles, avoiding the nest area."""
+        """Places obstacles with more organic, rounded shapes."""
         nest_area = set()
-        nest_radius_buffer = NEST_RADIUS + 3 # Buffer zone around nest
+        nest_radius_buffer = NEST_RADIUS + 4 # Increased buffer slightly for rounder shapes
         nest_center_int = tuple(map(int, nest_pos))
 
-        # Define the bounding box for checking nest area overlap
-        min_x = max(0, nest_center_int[0] - nest_radius_buffer)
-        max_x = min(self.grid_width - 1, nest_center_int[0] + nest_radius_buffer)
-        min_y = max(0, nest_center_int[1] - nest_radius_buffer)
-        max_y = min(self.grid_height - 1, nest_center_int[1] + nest_radius_buffer)
+        min_x_nest = max(0, nest_center_int[0] - nest_radius_buffer)
+        max_x_nest = min(self.grid_width - 1, nest_center_int[0] + nest_radius_buffer)
+        min_y_nest = max(0, nest_center_int[1] - nest_radius_buffer)
+        max_y_nest = min(self.grid_height - 1, nest_center_int[1] + nest_radius_buffer)
 
-        # Populate the set of coordinates within the nest buffer zone
-        for x in range(min_x, max_x + 1):
-            for y in range(min_y, max_y + 1):
+        for x in range(min_x_nest, max_x_nest + 1):
+            for y in range(min_y_nest, max_y_nest + 1):
                 if distance_sq((x, y), nest_center_int) <= nest_radius_buffer ** 2:
                     nest_area.add((x, y))
 
         placed_count = 0
-        max_placement_attempts = NUM_OBSTACLES * 15 # More attempts might be needed
-        for _ in range(max_placement_attempts):
+        max_obstacle_attempts = NUM_OBSTACLES * 25 # More attempts for complex placement
+
+        for _ in range(max_obstacle_attempts):
             if placed_count >= NUM_OBSTACLES: break
 
             attempts_per_obstacle = 0
             placed_this_obstacle = False
-            while attempts_per_obstacle < 25 and not placed_this_obstacle:
-                # Random size for the obstacle
-                w = rnd(MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE)
-                h = rnd(MIN_OBSTACLE_SIZE, MAX_OBSTACLE_SIZE)
-                # Random position, ensuring it fits within grid boundaries
-                x = rnd(0, self.grid_width - w)
-                y = rnd(0, self.grid_height - h)
+            while attempts_per_obstacle < 35 and not placed_this_obstacle:
+                # 1. Find a potential center for the obstacle cluster
+                cluster_cx = rnd(0, self.grid_width - 1)
+                cluster_cy = rnd(0, self.grid_height - 1)
 
-                # Check if the proposed obstacle overlaps the nest area
-                overlaps_nest = False
-                obstacle_rect_coords = set((i, j) for i in range(x, x + w) for j in range(y, y + h))
-                if not obstacle_rect_coords.isdisjoint(nest_area):
-                    overlaps_nest = True
+                # Rough check: Is the center too close to the nest?
+                if (cluster_cx, cluster_cy) in nest_area:
+                    attempts_per_obstacle += 1
+                    continue
 
-                # If no overlap and within bounds, place the obstacle
-                if not overlaps_nest:
-                     # Check bounds again just in case
-                     if x + w <= self.grid_width and y + h <= self.grid_height:
-                          self.obstacles[x : x + w, y : y + h] = True
-                          placed_this_obstacle = True
-                          placed_count += 1
+                # 2. Generate multiple overlapping clumps (circles)
+                num_clumps = rnd(MIN_OBSTACLE_CLUMPS, MAX_OBSTACLE_CLUMPS)
+                obstacle_cells_this_attempt = set()
+                can_place_this = True
+
+                for _ in range(num_clumps):
+                    # Clump center relative to cluster center
+                    clump_offset_x = int(rnd_gauss(0, OBSTACLE_CLUSTER_SPREAD_RADIUS * 0.5))
+                    clump_offset_y = int(rnd_gauss(0, OBSTACLE_CLUSTER_SPREAD_RADIUS * 0.5))
+                    clump_cx = cluster_cx + clump_offset_x
+                    clump_cy = cluster_cy + clump_offset_y
+                    clump_radius = rnd(MIN_OBSTACLE_CLUMP_RADIUS, MAX_OBSTACLE_CLUMP_RADIUS)
+                    clump_radius_sq = clump_radius ** 2
+
+                    # Iterate bounding box around the clump
+                    min_x = max(0, clump_cx - clump_radius)
+                    max_x = min(self.grid_width - 1, clump_cx + clump_radius)
+                    min_y = max(0, clump_cy - clump_radius)
+                    max_y = min(self.grid_height - 1, clump_cy + clump_radius)
+
+                    for x in range(min_x, max_x + 1):
+                        for y in range(min_y, max_y + 1):
+                            pos_check = (x, y)
+                            # Check distance and if it overlaps nest or existing temp obstacles
+                            if (distance_sq(pos_check, (clump_cx, clump_cy)) <= clump_radius_sq):
+                                if pos_check in nest_area:
+                                     can_place_this = False
+                                     break # This clump hit the nest, abandon this obstacle attempt
+                                if is_valid_pos(pos_check, self.grid_width, self.grid_height):
+                                     obstacle_cells_this_attempt.add(pos_check)
+                        if not can_place_this: break
+                    if not can_place_this: break # Break outer loop if inner failed
+
+                # 3. If all clumps were valid (didn't hit nest), place them
+                if can_place_this and obstacle_cells_this_attempt:
+                    # Check against already placed permanent obstacles
+                    is_clear = True
+                    for cell in obstacle_cells_this_attempt:
+                        # Need to check bounds again before accessing self.obstacles
+                        if not (0 <= cell[0] < self.grid_width and 0 <= cell[1] < self.grid_height) or self.obstacles[cell[0], cell[1]]:
+                            is_clear = False
+                            break
+                    # Place if the area is clear
+                    if is_clear:
+                         for x, y in obstacle_cells_this_attempt:
+                              self.obstacles[x, y] = True
+                         placed_this_obstacle = True
+                         placed_count += 1
+
                 attempts_per_obstacle += 1
 
         if placed_count < NUM_OBSTACLES:
-            print(f"Warning: Placed only {placed_count}/{NUM_OBSTACLES} obstacles.")
+            print(f"Warning: Placed only {placed_count}/{NUM_OBSTACLES} organic obstacles.")
         else:
-             print(f"Placed {placed_count} obstacles.")
-
+            print(f"Placed {placed_count} organic obstacles.")
 
     def is_obstacle(self, pos):
         """Checks if a grid cell contains an obstacle."""
@@ -999,14 +1053,48 @@ class Prey:
             # print(f"Prey died at {self.pos}") # Optional debug
 
     def draw(self, surface):
+        """Draws the prey (beetle-like)."""
         sim = self.simulation
         if not is_valid_pos(self.pos, sim.grid_width, sim.grid_height):
             return
-        cell_size = sim.cell_size
-        pos_px = (int(self.pos[0] * cell_size + cell_size / 2),
-                  int(self.pos[1] * cell_size + cell_size / 2))
-        radius = max(1, int(cell_size / 2.8))  # Scale radius with cell size
-        pygame.draw.circle(surface, self.color, pos_px, radius)
+
+        cs = sim.cell_size
+        pos_px = (int(self.pos[0] * cs + cs / 2),
+                  int(self.pos[1] * cs + cs / 2))
+
+        # Body (oval/ellipse)
+        body_width = max(3, int(cs / 1.8))
+        body_height = max(2, int(cs / 2.4))
+        body_rect = pygame.Rect(pos_px[0] - body_width // 2, pos_px[1] - body_height // 2, body_width, body_height)
+        body_color = self.color
+        pygame.draw.ellipse(surface, body_color, body_rect)
+
+        # Shell line (elytra division)
+        line_color = tuple(max(0, c - 40) for c in body_color) # Darker shade
+        line_start = (pos_px[0], body_rect.top)
+        line_end = (pos_px[0], body_rect.bottom)
+        pygame.draw.line(surface, line_color, line_start, line_end, 1)
+
+        # Optional: Tiny antennae
+        antenna_length = body_width * 0.3
+        antenna_angle = 0.3 # Radians from front
+        antenna_origin_x = pos_px[0] # Center X
+        antenna_origin_y = body_rect.top + body_height * 0.2 # Slightly back from front
+
+        # Left Antenna
+        angle_l = math.pi * 1.5 - antenna_angle # Pointing upwards-left
+        end_lx = antenna_origin_x + antenna_length * math.cos(angle_l)
+        end_ly = antenna_origin_y + antenna_length * math.sin(angle_l)
+        pygame.draw.line(surface, line_color, (antenna_origin_x, antenna_origin_y), (int(end_lx), int(end_ly)), 1)
+
+        # Right Antenna
+        angle_r = math.pi * 1.5 + antenna_angle # Pointing upwards-right
+        end_rx = antenna_origin_x + antenna_length * math.cos(angle_r)
+        end_ry = antenna_origin_y + antenna_length * math.sin(angle_r)
+        pygame.draw.line(surface, line_color, (antenna_origin_x, antenna_origin_y), (int(end_rx), int(end_ry)), 1)
+
+        # Outline the body
+        pygame.draw.ellipse(surface, (0, 0, 0), body_rect, 1) # Black outline
 
 # --- Ant Class ---
 class Ant:
@@ -1149,7 +1237,7 @@ class Ant:
         # Antennae start at the head
         antenna_base_pos = head_center
         antenna_length = int(head_size * 1.2)
-        antenna_angle_offset = 0.3  # Radians (about 17 degrees)
+        antenna_angle_offset = 0.52  # Radians (about 17 degrees)
 
         # Calculate antenna end positions
         # Left antenna
@@ -2223,15 +2311,20 @@ class Ant:
 
     def attack(self, target):
         """Deals damage to a target (Enemy or Prey)."""
+        sim = self.simulation # Get simulation instance
         # Check if target is valid and has take_damage method
         if isinstance(target, (Enemy, Prey)) and hasattr(target, 'take_damage'):
+            target_pos = target.pos # Get target position before potential death
             target.take_damage(self.attack_power, self)
+            # --- NEW: Record attack for visual indicator ---
+            sim.add_attack_indicator(self.pos, target_pos, ATTACK_INDICATOR_COLOR_ANT)
+            # --- END NEW ---
             # --- NEW: Speed Boost ---
             self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
             self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
         # --- NEW: Speed Boost ---
-        self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
-        self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
+        self.speed_boost_timer = ANT_SPEED_BOOST_DURATION # This line seems duplicated, keep one.
+        self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER # This line seems duplicated, keep one.
 
     def take_damage(self, amount, attacker):
         """Reduces HP and potentially drops pheromones upon being hit."""
@@ -2477,9 +2570,14 @@ class Enemy:
 
     def attack(self, target):
         """Deals damage to a target ant or queen."""
+        sim = self.simulation # Get simulation instance
         # Check type and method existence for safety
         if isinstance(target, (Ant, Queen)) and hasattr(target, 'take_damage'):
+            target_pos = target.pos # Get target position
             target.take_damage(self.attack_power, self)
+            # --- NEW: Record attack for visual indicator ---
+            sim.add_attack_indicator(self.pos, target_pos, ATTACK_INDICATOR_COLOR_ENEMY)
+            # --- END NEW ---
 
     def take_damage(self, amount, attacker):
         """Reduces HP when attacked."""
@@ -2494,6 +2592,56 @@ class Enemy:
         else:
              self.hp = 0
              # print(f"Enemy died at {self.pos}") # Optional debug
+
+    def draw(self, surface):
+        """Draws the enemy (spider-like)."""
+        sim = self.simulation
+        if not is_valid_pos(self.pos, sim.grid_width, sim.grid_height):
+            return
+
+        cs = sim.cell_size
+        pos_px = (int(self.pos[0] * cs + cs / 2),
+                  int(self.pos[1] * cs + cs / 2))
+
+        # Body (slightly elongated ellipse)
+        body_width = max(2, int(cs * 0.45))
+        body_height = max(3, int(cs * 0.6))
+        body_rect = pygame.Rect(pos_px[0] - body_width // 2, pos_px[1] - body_height // 2, body_width, body_height)
+        body_color = self.color
+        pygame.draw.ellipse(surface, body_color, body_rect)
+
+        # Legs (8 thin lines)
+        num_legs = 8
+        leg_length = cs * 0.4
+        leg_color = tuple(max(0, c - 60) for c in body_color) # Darker color for legs
+        leg_thickness = max(1, cs // 10) # Make legs slightly thicker with larger cells
+
+        # Define angles - slightly irregular spacing
+        base_angles = [
+            math.pi * 0.20, math.pi * 0.45, math.pi * 0.55, math.pi * 0.80, # One side
+            math.pi * 1.20, math.pi * 1.45, math.pi * 1.55, math.pi * 1.80  # Other side
+        ]
+
+        # Attach point slightly offset towards the center top/bottom for visual appeal
+        attach_offset_y = body_height * 0.15
+
+        for i, angle in enumerate(base_angles):
+            # Alternate attach points slightly for visual separation
+            attach_y = pos_px[1] - attach_offset_y if i < 4 else pos_px[1] + attach_offset_y
+            attach_point = (pos_px[0], attach_y)
+
+            # Add slight randomness to angle
+            angle += rnd_uniform(-0.08, 0.08)
+
+            # Calculate end point
+            end_x = attach_point[0] + leg_length * math.cos(angle)
+            end_y = attach_point[1] + leg_length * math.sin(angle)
+
+            # Draw leg
+            pygame.draw.line(surface, leg_color, attach_point, (int(end_x), int(end_y)), leg_thickness)
+
+        # Outline the body
+        pygame.draw.ellipse(surface, (0, 0, 0), body_rect, 1) # Black outline
 
 # --- Main Simulation Class ---
 class AntSimulation:
@@ -2588,12 +2736,15 @@ class AntSimulation:
         self.enemy_positions = {}
         self.prey_positions = {}
         self.brood_positions = {}  # { (x, y): [brood_item1, brood_item2,...] }
+        self.recent_attacks = []  # --- For attack indicators ---
 
         # --- NEW: Ant Position Array ---
         self.max_ants = MAX_ANTS  # Store max ants for array size
-        self.ant_positions_array = np.full((self.max_ants, 2), -1, dtype=np.int16)  # [x, y]
-        self.ant_indices = {}  # {ant_instance: index}
-        self.next_ant_index = 0  # Next free index in the array
+        # Use float for position to avoid potential issues, or keep int if sure
+        # self.ant_positions_array = np.full((self.max_ants, 2), -1.0, dtype=np.float32) # Example with float
+        self.ant_positions_array = np.full((self.max_ants, 2), -1, dtype=np.int16)  # Sticking with int16
+        self.ant_indices = {}  # {ant_instance: index in array}
+        self.next_ant_index = 0  # Tracks next available index (for efficient adding)
 
         # Colony Resources
         self.colony_food_storage_sugar = 0.0
@@ -2612,22 +2763,24 @@ class AntSimulation:
         self.show_legend = False
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
-        self.buttons = self._create_buttons()  # Create after screen size is known
+        self.buttons = self._create_buttons()  # Create after screen size and font are known
 
         # Drawing Surfaces
         self.static_background_surface = pygame.Surface((self.width, self.height))
         self.latest_frame_surface = None  # For network streaming
-        self._prepare_static_background()
-        # --- NEW: Spatial Grid ---
-        self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)
+        self.food_dot_rng = random.Random()  # --- NEU: Dedizierter RNG für Futterpunkte ---
+        self._prepare_static_background()  # Draw initial obstacles here
+
+        # --- Spatial Grid ---
+        self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)  # Use pixel width/height
 
         # --- Start Optional Network Stream ---
         self._start_streaming_server_if_enabled()
 
-
         # --- Initial Simulation Reset ---
-        if self.app_running:  # Only reset if init was successful
+        if self.app_running:  # Only reset if init was successful so far
             self._reset_simulation()
+            # Note: simulation_running flag is set to True inside _reset_simulation
 
     def _init_fonts(self):
         """Initializes fonts, scaling them based on screen height."""
@@ -2770,9 +2923,17 @@ class AntSimulation:
         # Find coordinates where obstacles are True
         obstacle_coords = np.argwhere(self.grid.obstacles)
         # Draw rectangles for each obstacle coordinate
+        base_r, base_g, base_b = OBSTACLE_COLOR
+        var = OBSTACLE_COLOR_VARIATION
         for x, y in obstacle_coords:
-            pygame.draw.rect(self.static_background_surface, OBSTACLE_COLOR, (x * cs, y * cs, cs, cs))
-        print(f"Prepared static background with {len(obstacle_coords)} obstacles.")
+            # --- NEW: Add color variation ---
+            r = max(0, min(255, base_r + rnd(-var, var)))
+            g = max(0, min(255, base_g + rnd(-var, var)))
+            b = max(0, min(255, base_b + rnd(-var, var)))
+            color = (r, g, b)
+            # --- END NEW ---
+            pygame.draw.rect(self.static_background_surface, color, (x * cs, y * cs, cs, cs)) # Use varied color
+        print(f"Prepared static background with {len(obstacle_coords)} organic obstacles.")
 
     def _create_buttons(self):
         """Creates UI buttons with relative positioning."""
@@ -3616,6 +3777,7 @@ class AntSimulation:
 
     def draw(self):
         """Draws all simulation elements onto the screen."""
+        current_multiplier = SPEED_MULTIPLIERS[self.simulation_speed_index]  # Needed for indicator update
         # 1. Draw grid (static bg, pheromones, food, nest area)
         self._draw_grid()
         # 2. Draw brood
@@ -3628,7 +3790,9 @@ class AntSimulation:
         self._draw_enemies() # Separated enemy drawing
         # 6. Draw prey
         self._draw_prey()
-
+        # --- NEW: Draw Attack Indicators ---
+        # Pass multiplier to let it decrement timers correctly
+        self._draw_attack_indicators(current_multiplier)
         # --- UI Overlays ---
         # 7. Draw debug overlay if enabled
         if self.show_debug_info:
@@ -3661,7 +3825,13 @@ class AntSimulation:
         cs = self.cell_size  # Local alias for cell size
 
         # 1. Blit the pre-rendered static background (obstacles)
-        self.screen.blit(self.static_background_surface, (0, 0))
+        try:
+            self.screen.blit(self.static_background_surface, (0, 0))
+        except pygame.error as e:
+             print(f"ERROR: Failed to blit static background: {e}")
+             # Attempting to continue might lead to more errors, but let's try
+        except Exception as e:
+             print(f"ERROR: Unexpected error blitting static background: {e}")
 
         # 2. Draw Pheromones (using transparent surfaces)
         ph_info = {
@@ -3676,81 +3846,159 @@ class AntSimulation:
         min_alpha_for_draw = 5  # Don't draw extremely faint pheromones
 
         for ph_type, (base_col, arr, current_max) in ph_info.items():
-            # Create a surface for this pheromone layer with alpha channel
-            ph_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            # Determine normalization factor (avoid division by zero)
-            # Normalize against a fraction of max for better visibility range
-            norm_divisor = max(current_max / 2.5, 1.0)
-
-            # Find coordinates where pheromone > threshold (optimization)
-            nz_coords = np.argwhere(arr > MIN_PHEROMONE_DRAW_THRESHOLD)
-
-            # Draw rectangles for each significant pheromone cell
-            for x, y in nz_coords:
-                val = arr[x, y]
-                # Normalize value (0 to 1 range, approximately)
-                norm_val = normalize(val, norm_divisor)
-                # Calculate alpha based on normalized value and base color's alpha
-                alpha = min(max(int(norm_val * base_col[3]), 0), 255)
-
-                # Only draw if alpha is above minimum threshold
-                if alpha >= min_alpha_for_draw:
-                    # Final color with calculated alpha
-                    color = (*base_col[:3], alpha)  # Use base RGB, calculated A
-                    # Draw the rectangle onto the pheromone surface
-                    pygame.draw.rect(ph_surf, color, (x * cs, y * cs, cs, cs))
-
-            # Blit this pheromone layer onto the main screen
-            self.screen.blit(ph_surf, (0, 0))
-
-        # 3. Draw Food
-        min_draw_food = 0.1  # Minimum total food amount to draw a cell
-        # Find cells with any significant amount of food
-        food_totals = np.sum(self.grid.food, axis=2)
-        food_nz_coords = np.argwhere(food_totals > min_draw_food)
-
-        s_idx = FoodType.SUGAR.value
-        p_idx = FoodType.PROTEIN.value
-        s_col = FOOD_COLORS[FoodType.SUGAR]
-        p_col = FOOD_COLORS[FoodType.PROTEIN]
-
-        for x, y in food_nz_coords:
             try:
-                foods = self.grid.food[x, y]
-                s = foods[s_idx]
-                p = foods[p_idx]
-                total = s + p
-                # Calculate mix ratio (avoid division by zero)
-                sr = s / total if total > 0 else 0.5  # Sugar ratio
-                pr = 1.0 - sr  # Protein ratio
-                # Mix colors based on ratio
-                color = (int(s_col[0] * sr + p_col[0] * pr),
-                         int(s_col[1] * sr + p_col[1] * pr),
-                         int(s_col[2] * sr + p_col[2] * pr))
-                # Draw the food cell
-                pygame.draw.rect(self.screen, color, (x * cs, y * cs, cs, cs))
-            except IndexError:
-                continue  # Safety check
+                # Create a surface for this pheromone layer with alpha channel
+                # Check for valid dimensions before creating surface
+                if self.width <= 0 or self.height <= 0:
+                    # print(f"WARN: Invalid dimensions for pheromone surface ({self.width}x{self.height}). Skipping {ph_type}.") # Optional Debug
+                    continue
+                ph_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+
+                norm_divisor = max(current_max / 2.5, 1.0)
+                nz_coords = np.argwhere(arr > MIN_PHEROMONE_DRAW_THRESHOLD)
+
+                # Draw rectangles for each significant pheromone cell
+                for x, y in nz_coords:
+                    if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):
+                        continue
+
+                    try:
+                        val = arr[x, y]
+                        norm_val = normalize(val, norm_divisor)
+                        # Ensure base_col has alpha, default to 255 if not
+                        alpha_base = base_col[3] if len(base_col) > 3 else 255
+                        alpha = min(max(int(norm_val * alpha_base), 0), 255)
+
+                        if alpha >= min_alpha_for_draw:
+                            color = (*base_col[:3], alpha)
+                            rect_coords = (x * cs, y * cs, cs, cs)
+                            pygame.draw.rect(ph_surf, color, rect_coords)
+                    except IndexError:
+                        # print(f"WARN: Pheromone draw IndexError at {(x,y)} for {ph_type}") # Optional Debug
+                        continue
+                    except (ValueError, TypeError) as e:
+                        # print(f"WARN: Pheromone draw Value/Type Error at {(x,y)} for {ph_type}: {e}") # Optional Debug
+                        continue
+
+                # Blit this pheromone layer onto the main screen
+                self.screen.blit(ph_surf, (0, 0))
+            except pygame.error as e:
+                 print(f"ERROR: Pygame error during pheromone drawing for {ph_type}: {e}")
+            except ValueError as e: # Catch potential numpy errors during argwhere or access
+                 print(f"ERROR: ValueError during pheromone processing for {ph_type}: {e}")
+            except Exception as e: # Catch any other unexpected errors
+                 print(f"ERROR: Unexpected error during pheromone drawing for {ph_type}: {e}")
+                 # traceback.print_exc() # Uncomment for full traceback if needed
+
+
+        # 3. Draw Food (mit stabilen Punkten)
+        food_drawn_count = 0 # Debug counter
+        try:
+            food_totals = np.sum(self.grid.food, axis=2)
+            min_food_for_dot_check = 0.01
+            food_nz_coords = np.argwhere(food_totals > min_food_for_dot_check)
+
+            s_idx = FoodType.SUGAR.value
+            p_idx = FoodType.PROTEIN.value
+            s_col = FOOD_COLORS[FoodType.SUGAR]
+            p_col = FOOD_COLORS[FoodType.PROTEIN]
+            dot_radius = max(1, FOOD_DOT_RADIUS) # Ensure radius is at least 1
+
+            # --- Verwenden Sie den dedizierten RNG ---
+            if not hasattr(self, 'food_dot_rng') or self.food_dot_rng is None:
+                print("ERROR: food_dot_rng not initialized!")
+                # If RNG isn't there, we can't draw food properly, so skip the rest of food drawing.
+                # Alternatively, initialize it here as a fallback, but better to fix __init__
+                # self.food_dot_rng = random.Random()
+            else:
+                food_rng = self.food_dot_rng
+
+                for x, y in food_nz_coords:
+                     if not (0 <= x < self.grid_width and 0 <= y < self.grid_height):
+                         continue
+
+                     try:
+                         foods = self.grid.food[x, y]
+                         s = foods[s_idx]
+                         p = foods[p_idx]
+                         total = s + p
+
+                         if total < min_food_for_dot_check: continue
+
+                         num_dots = max(1, min(FOOD_MAX_DOTS_PER_CELL, int(total * FOOD_DOTS_PER_UNIT)))
+
+                         sr = s / total if total > 0 else 0.5
+                         pr = 1.0 - sr
+                         color_mixed = (int(s_col[0] * sr + p_col[0] * pr),
+                                        int(s_col[1] * sr + p_col[1] * pr),
+                                        int(s_col[2] * sr + p_col[2] * pr))
+
+                         color = tuple(max(0, min(255, c)) for c in color_mixed)
+
+                         cell_x_start = x * cs
+                         cell_y_start = y * cs
+
+                         # --- WICHTIG: Seed den RNG für diese Zelle deterministisch ---
+                         # Berechne den Seed (wird wahrscheinlich ein numpy int)
+                         cell_seed_np = x * self.grid_height + y
+                         # Konvertiere den Seed explizit in einen Python int! <<< FIX
+                         cell_seed_int = int(cell_seed_np)
+                         food_rng.seed(cell_seed_int)
+                         # -----------------------------------------------------------
+
+                         # Ensure cell size is large enough for the dot range
+                         if cs - (2 * dot_radius) <= 0:
+                              if num_dots > 0: # Only draw if there should be food
+                                 dot_x = cell_x_start + cs / 2
+                                 dot_y = cell_y_start + cs / 2
+                                 # Check if coordinates are valid before drawing
+                                 if 0 <= int(dot_x) < self.width and 0 <= int(dot_y) < self.height:
+                                     pygame.draw.circle(self.screen, color, (int(dot_x), int(dot_y)), dot_radius)
+                                     food_drawn_count += 1
+                              continue # Skip the loop below if cell too small
+
+                         for i in range(num_dots):
+                             # --- Verwenden Sie den geseedeten RNG für die Position ---
+                             dot_x = cell_x_start + food_rng.uniform(dot_radius, cs - dot_radius)
+                             dot_y = cell_y_start + food_rng.uniform(dot_radius, cs - dot_radius)
+                             # ------------------------------------------------------
+                             # Check if coordinates are valid before drawing
+                             if 0 <= int(dot_x) < self.width and 0 <= int(dot_y) < self.height:
+                                 pygame.draw.circle(self.screen, color, (int(dot_x), int(dot_y)), dot_radius)
+                                 food_drawn_count += 1
+
+                     except IndexError:
+                         # print(f"WARN: Food draw IndexError at {(x,y)}") # Optional Debug
+                         continue
+                     except (ValueError, TypeError) as e:
+                         # Use f-string for better error message formatting
+                         print(f"ERROR: Value/Type Error drawing food at {(int(x), int(y))}: Color={color}, Error={e}")
+                         continue
+
+        except Exception as e:
+            print(f"ERROR: General exception during food grid processing: {e}")
+            traceback.print_exc() # Print full traceback for general errors
+
 
         # 4. Draw Nest Area Highlight (subtle overlay)
         r = NEST_RADIUS
-        nx, ny = self.nest_pos  # Use dynamic nest position
-        # Calculate pixel coordinates for the nest center
+        nx, ny = self.nest_pos
         center_x = int(nx * cs + cs / 2)
         center_y = int(ny * cs + cs / 2)
-        # Draw a circle with a transparent overlay
         try:
-            # Create a temporary surface for the overlay
-            nest_surf = pygame.Surface((r * 2 * cs, r * 2 * cs), pygame.SRCALPHA)
-            # Fill with a very transparent color
-            nest_surf.fill((0, 0, 0, 0))  # Clear the surface
-            # Draw a circle onto the surface
-            pygame.draw.circle(nest_surf, (100, 100, 100, 35), (r * cs, r * cs), r * cs)  # Light grey, low alpha
-            # Blit the overlay onto the screen, centered at the nest
-            self.screen.blit(nest_surf, (center_x - r * cs, center_y - r * cs))
-        except ValueError:
-            # Can happen if rect size is invalid (e.g., negative radius)
-            pass
+            radius_px = r * cs
+            if radius_px <= 0: raise ValueError("Nest radius non-positive")
+            surf_size = int(radius_px * 2)
+            if surf_size <= 0: raise ValueError("Nest surface size non-positive")
+
+            nest_surf = pygame.Surface((surf_size, surf_size), pygame.SRCALPHA)
+            nest_surf.fill((0, 0, 0, 0))
+            pygame.draw.circle(nest_surf, (100, 100, 100, 35), (surf_size // 2, surf_size // 2), radius_px)
+            blit_pos = (center_x - surf_size // 2, center_y - surf_size // 2)
+            self.screen.blit(nest_surf, blit_pos)
+        except (ValueError, pygame.error, OverflowError) as e:
+            # print(f"WARN: Could not draw nest highlight: {e}") # Optional Debug
+            pass # Silently ignore if nest drawing fails
 
     def _draw_brood(self):
         """Draws all brood items (eggs, larvae, pupae)."""
@@ -3786,21 +4034,20 @@ class AntSimulation:
             a.draw(self.screen)
 
     def _draw_enemies(self):
-         """Draws all enemy entities."""
-         cs = self.cell_size
-         cs_half = cs / 2
-
+         """Draws all enemy entities using their own draw method."""
+         # Iterate over a copy of the list for safety during potential modifications
          for e in list(self.enemies):
-             if e not in self.enemies or not is_valid_pos(e.pos, self.grid_width, self.grid_height):
-                 continue
-             pos_px = (int(e.pos[0] * cs + cs_half),
-                       int(e.pos[1] * cs + cs_half))
-             # Enemy radius relative to cell size
-             radius = max(1, int(cs / 2.3))
-             # Draw main body
-             pygame.draw.circle(self.screen, e.color, pos_px, radius)
-             # Draw outline
-             pygame.draw.circle(self.screen, (0, 0, 0), pos_px, radius, 1) # Black outline
+             # Check if enemy still exists in the main list and has a valid position
+             if e in self.enemies and is_valid_pos(e.pos, self.grid_width, self.grid_height):
+                  try:
+                      # --- KORREKTUR: Rufe die draw-Methode des Feind-Objekts auf ---
+                      e.draw(self.screen)
+                      # ---------------------------------------------------------
+                  except Exception as draw_error:
+                      # Catch potential errors within the specific enemy's draw method
+                      print(f"ERROR: Failed to draw enemy at {e.pos}: {draw_error}")
+                      # Optionally remove the problematic enemy or just skip drawing it
+                      # For now, just log the error and continue
 
     def _draw_prey(self):
         """Draws all prey entities."""
@@ -4025,6 +4272,64 @@ class AntSimulation:
 
         # If loop exits without choice (e.g., app_running becomes false)
         return "quit"
+
+    def add_attack_indicator(self, attacker_pos_grid, target_pos_grid, color):
+         """Stores information about a recent attack for drawing."""
+         if not is_valid_pos(attacker_pos_grid, self.grid_width, self.grid_height) or \
+            not is_valid_pos(target_pos_grid, self.grid_width, self.grid_height):
+             return # Ignore attacks involving invalid positions
+
+         indicator = {
+             "attacker_pos": attacker_pos_grid,
+             "target_pos": target_pos_grid,
+             "color": color,
+             "timer": ATTACK_INDICATOR_DURATION_TICKS # Start timer
+         }
+         self.recent_attacks.append(indicator)
+
+    def _draw_attack_indicators(self, speed_multiplier):
+         """Draws visual effects for recent attacks and updates timers."""
+         if not self.recent_attacks:
+             return
+
+         cs = self.cell_size
+         cs_half = cs / 2
+         indices_to_remove = []
+
+         # Iterate backwards for safe removal
+         for i in range(len(self.recent_attacks) - 1, -1, -1):
+             indicator = self.recent_attacks[i]
+             indicator["timer"] -= speed_multiplier # Decrease timer based on game speed
+
+             if indicator["timer"] <= 0:
+                 indices_to_remove.append(i)
+                 continue
+
+             # Calculate pixel positions
+             attacker_px = (int(indicator["attacker_pos"][0] * cs + cs_half),
+                            int(indicator["attacker_pos"][1] * cs + cs_half))
+             target_px = (int(indicator["target_pos"][0] * cs + cs_half),
+                          int(indicator["target_pos"][1] * cs + cs_half))
+
+             # Calculate alpha based on remaining time (fade out)
+             base_alpha = indicator["color"][3]
+             current_alpha = max(0, min(255, int(base_alpha * (indicator["timer"] / ATTACK_INDICATOR_DURATION_TICKS))))
+
+             # Draw a line or flash
+             if current_alpha > 10: # Only draw if somewhat visible
+                 line_color = (*indicator["color"][:3], current_alpha) # Apply faded alpha
+                 try:
+                      pygame.draw.line(self.screen, line_color, attacker_px, target_px, 2) # Thickness 2 line
+                      # Optional: Draw small circles at ends
+                      # pygame.draw.circle(self.screen, line_color, attacker_px, 3)
+                      # pygame.draw.circle(self.screen, line_color, target_px, 3)
+                 except TypeError: # Catch potential color format issues
+                      pass
+
+
+         # Remove expired indicators
+         for index in sorted(indices_to_remove, reverse=True): # Remove from end first
+              del self.recent_attacks[index]
 
     def run(self):
         """Main application loop: handles simulation runs and end dialog."""
