@@ -153,7 +153,7 @@ P_FOOD_SEARCHING = 0.0  # Placeholder/Not used directly
 P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
 # Ant Parameters
-INITIAL_ANTS = 10
+INITIAL_ANTS = 50
 MAX_ANTS = 200
 QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
@@ -184,7 +184,7 @@ LARVA_FOOD_CONSUMPTION_SUGAR = 0.01
 LARVA_FEED_INTERVAL = 50 # Ticks
 
 # Enemy Parameters
-INITIAL_ENEMIES = 1
+INITIAL_ENEMIES = 10
 ENEMY_HP = 60
 ENEMY_ATTACK = 10
 ENEMY_MOVE_DELAY = 4 # Ticks
@@ -2008,8 +2008,9 @@ class Ant:
         # --- Speed Boost ---
         if self.speed_boost_timer > 0:
             self.speed_boost_timer -= speed_multiplier
-            # Apply boost to move delay
-            self.move_delay_base = int(attrs["speed_delay"] / self.speed_boost_multiplier)
+            # Apply boost to move delay (ensure it doesn't become negative if multiplier is huge)
+            boosted_delay = attrs["speed_delay"] / self.speed_boost_multiplier
+            self.move_delay_base = max(0, int(boosted_delay)) # Use max(0,...)
         else:
             self.speed_boost_multiplier = 1.0  # Reset multiplier
             self.move_delay_base = attrs["speed_delay"]  # Reset move delay
@@ -2024,7 +2025,7 @@ class Ant:
                 self._switch_state(next_state, "EscapeEnd")
 
         # Check for state transitions based on environment
-        self._update_state()  # <--- HIER IST DIE KORREKTE PLATZIERUNG
+        self._update_state()
 
         # Check if died during state update (e.g., starvation check moved there)
         if self.hp <= 0: return
@@ -2037,13 +2038,29 @@ class Ant:
 
         # --- Enemy Interaction ---
         target_enemy = None
+        # --- DEBUGGING START ---
+        found_enemy_nearby_debug = False # Flag für Debug-Ausgabe
+        # --- DEBUGGING END ---
         for p_int in neighbors_int:
             enemy = sim.get_enemy_at(p_int)
             if enemy and enemy.hp > 0:
+                # --- DEBUGGING START ---
+                #print(f"DEBUG: Ant {id(self)} at {pos_int} DETECTED Enemy {id(enemy)} at {p_int} (HP: {enemy.hp:.1f})")
+                found_enemy_nearby_debug = True
+                # --- DEBUGGING END ---
                 target_enemy = enemy
                 break  # Attack the first enemy found
 
+        # --- DEBUGGING START ---
+        # Gib nur aus, wenn ein Feind in der Nähe gefunden wurde, um die Konsole nicht zu überfluten
+        # if found_enemy_nearby_debug and target_enemy is None:
+        #     print(f"WARN: Ant {id(self)} found enemy nearby but target_enemy is None!")
+        # --- DEBUGGING END ---
+
         if target_enemy:
+            # --- DEBUGGING START ---
+            #print(f"DEBUG: Ant {id(self)} at {pos_int} is about to ATTACK Enemy {id(target_enemy)} at {target_enemy.pos}")
+            # --- DEBUGGING END ---
             self.attack(target_enemy)
             grid.add_pheromone(pos_int, P_ALARM_FIGHT, "alarm")  # Signal danger
             self.stuck_timer = 0  # Reset stuck timer during fight
@@ -2051,36 +2068,20 @@ class Ant:
             self.last_move_info = f"FightEnemy@{target_enemy.pos}"
             # Ensure state is DEFENDING
             if self.state != AntState.DEFENDING:
+                 # --- DEBUGGING START ---
+                 # print(f"DEBUG: Ant {id(self)} switching to DEFENDING due to enemy contact.") # Optional: Noch mehr Details
+                 # --- DEBUGGING END ---
                 self._switch_state(AntState.DEFENDING, "EnemyContact!")
             return  # Attacked, skip movement this tick
-        # --- Interaction Checks (Attack) ---
-        pos_int = self.pos
-        # Check immediate surroundings (including current cell) for enemies/prey
-        neighbors_int = get_neighbors(pos_int, sim.grid_width, sim.grid_height, include_center=True)
-        grid = sim.grid
+        # --- DEBUGGING START ---
+        # elif found_enemy_nearby_debug: # Wenn ein Feind gefunden wurde, aber target_enemy nicht gesetzt wurde (sollte nicht passieren) oder der if-Block nicht betreten wurde
+        #     print(f"WARN: Ant {id(self)} detected enemy but did NOT enter attack block. State: {self.state.name}")
+        # --- DEBUGGING END ---
 
-        # --- Enemy Interaction ---
-        target_enemy = None
-        for p_int in neighbors_int:
-            enemy = sim.get_enemy_at(p_int)
-            if enemy and enemy.hp > 0:
-                target_enemy = enemy
-                break  # Attack the first enemy found
 
-        if target_enemy:
-            self.attack(target_enemy)
-            grid.add_pheromone(pos_int, P_ALARM_FIGHT, "alarm")  # Signal danger
-            self.stuck_timer = 0  # Reset stuck timer during fight
-            self.target_prey = None  # Stop hunting if fighting
-            self.last_move_info = f"FightEnemy@{target_enemy.pos}"
-            # Ensure state is DEFENDING
-            if self.state != AntState.DEFENDING:
-                self._switch_state(AntState.DEFENDING, "EnemyContact!")
-            return  # Attacked, skip movement this tick
-
-        # --- Prey Interaction ---
+        # --- Prey Interaction --- (Check if enemy attack already happened)
         target_prey_to_attack = None
-        prey_in_range = []  # Find all prey in neighbor cells
+        prey_in_range = []  # Find all prey in neighbor cells (use same neighbors_int)
         for p_int in neighbors_int:
             prey = sim.get_prey_at(p_int)
             if prey and prey.hp > 0:
@@ -2091,98 +2092,82 @@ class Ant:
             # If currently HUNTING and the target is adjacent, attack it
             if (self.state == AntState.HUNTING and self.target_prey and
                     self.target_prey in prey_in_range):
-                # Ensure the target is actually in a neighboring cell (not just same object far away)
+                # Ensure the target is actually in a neighboring cell
                 if self.target_prey.pos in neighbors_int:
                     should_attack_prey = True
                     target_prey_to_attack = self.target_prey
             # If not returning/defending, consider opportunistic attack
             elif self.state not in [AntState.RETURNING_TO_NEST, AntState.DEFENDING]:
                 # Check if colony needs protein (worker) or if soldier (always hunts)
-                can_hunt = ((
-                                    self.caste == AntCaste.WORKER and sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 2) or
+                can_hunt = ((self.caste == AntCaste.WORKER and sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 2) or
                             (self.caste == AntCaste.SOLDIER))
                 if can_hunt:
-                    # Prioritize attacking prey in adjacent cells over current cell
                     adjacent_prey = [p for p in prey_in_range if p.pos != pos_int]
                     prey_on_cell = [p for p in prey_in_range if p.pos == pos_int]
 
                     if adjacent_prey:
                         should_attack_prey = True
-                        target_prey_to_attack = random.choice(adjacent_prey)  # Attack random adjacent
+                        target_prey_to_attack = random.choice(adjacent_prey)
                     elif prey_on_cell:
                         should_attack_prey = True
-                        target_prey_to_attack = random.choice(prey_on_cell)  # Attack random on current cell
+                        target_prey_to_attack = random.choice(prey_on_cell)
 
         # Perform the attack if decided
         if should_attack_prey and target_prey_to_attack:
+            # --- DEBUGGING ---
+            # print(f"DEBUG: Ant {id(self)} at {pos_int} attacking Prey {id(target_prey_to_attack)} at {target_prey_to_attack.pos}")
+            # ---
             self.attack(target_prey_to_attack)
             self.stuck_timer = 0  # Reset stuck timer
             self.last_move_info = f"AtkPrey@{target_prey_to_attack.pos}"
 
-            # --- Handle Prey Death ---
             if target_prey_to_attack.hp <= 0:
                 killed_prey_pos = target_prey_to_attack.pos
-                # Remove prey from simulation and add food/pheromones
                 sim.kill_prey(target_prey_to_attack)
-                # Drop food pheromone (protein) and recruitment signal at kill site
                 grid.add_pheromone(killed_prey_pos, P_FOOD_AT_SOURCE, "food", FoodType.PROTEIN)
                 grid.add_pheromone(killed_prey_pos, P_RECRUIT_PREY, "recruitment")
-                # If this was the targeted prey, clear the target
                 if self.target_prey == target_prey_to_attack:
                     self.target_prey = None
-                # Revert to default state after kill
                 next_s = AntState.SEARCHING if self.caste == AntCaste.WORKER else AntState.PATROLLING
                 self._switch_state(next_s, "PreyKilled")
-                # Don't return here, allow pheromone dropping etc. later if needed
-            # Skip movement this tick since we attacked
+            # Skip movement this tick since we attacked prey
             return
 
         # --- Movement ---
         if self.move_delay_timer > 0:
-            self.move_delay_timer -= 1  # Decrement timer based on sim ticks (implicitly via update loop)
+            self.move_delay_timer -= 1
             return  # Cannot move yet
 
-        # Calculate how many ticks the base delay corresponds to at current speed
-        # (Approximation: effectively skips move updates for 'delay' ticks)
-        # If speed_multiplier is high, delay might become 0 effectively.
         effective_delay_updates = 0
         if self.move_delay_base > 0:
             if speed_multiplier > 0:
                 # Calculate effective # frames to wait. -1 because current frame is one step.
                 effective_delay_updates = max(0, int(round(self.move_delay_base / speed_multiplier)) - 1)
             else:  # Paused
-                effective_delay_updates = float('inf')  # Wait indefinitely if paused
-        # Set the timer for the next allowed move
+                effective_delay_updates = float('inf')
         self.move_delay_timer = effective_delay_updates
 
         # --- Choose and Execute Move ---
         old_pos_int = self.pos
-        # Store flag before potentially changing it
         local_just_picked = self.just_picked_food
-        self.just_picked_food = False  # Reset flag for this tick
+        self.just_picked_food = False
 
-        # Determine the next position
         new_pos_int = self._choose_move()
 
         moved = False
         found_food_type = None
         food_amount = 0.0
 
-        # If a valid move was chosen and it's different from current position
         if new_pos_int and new_pos_int != old_pos_int:
-            # Update position
             self.pos = new_pos_int
-            sim.update_entity_position(self, old_pos_int, new_pos_int)  # Notify simulation
-            # Update movement tracking
+            sim.update_entity_position(self, old_pos_int, new_pos_int)
             self.last_move_direction = (new_pos_int[0] - old_pos_int[0], new_pos_int[1] - old_pos_int[1])
             self._update_path_history(new_pos_int)
-            self.stuck_timer = 0  # Reset stuck timer
+            self.stuck_timer = 0
             moved = True
 
-            # Check for food at the new location
             try:
                 foods = grid.food[new_pos_int[0], new_pos_int[1]]
-                # Check sugar first, then protein
                 if foods[FoodType.SUGAR.value] > 0.1:
                     found_food_type = FoodType.SUGAR
                     food_amount = foods[FoodType.SUGAR.value]
@@ -2190,124 +2175,101 @@ class Ant:
                     found_food_type = FoodType.PROTEIN
                     food_amount = foods[FoodType.PROTEIN.value]
             except IndexError:
-                pass  # Should not happen if position is valid
+                pass
 
-        # Handle cases where no move was made or chosen move was the same
         elif new_pos_int == old_pos_int:
             self.stuck_timer += 1
             self.last_move_info += "(Move->Same)"
             self.last_move_direction = (0, 0)
-        else:  # new_pos_int was None
+        else:
             self.stuck_timer += 1
             self.last_move_info += "(NoChoice)"
             self.last_move_direction = (0, 0)
 
         # --- Post-Movement Actions (Pheromones, State Changes) ---
-        pos_int = self.pos  # Use potentially updated position
+        pos_int = self.pos # Use potentially updated position
         nest_pos_int = sim.nest_pos
         is_near_nest = distance_sq(pos_int, nest_pos_int) <= NEST_RADIUS ** 2
 
-        # --- Actions based on State ---
         if self.state in [AntState.SEARCHING, AntState.HUNTING]:
-            # Worker: Pick up food if found and empty-handed
             if (self.caste == AntCaste.WORKER and found_food_type and
                     self.carry_amount == 0):
                 pickup_amount = min(self.max_capacity, food_amount)
-                if pickup_amount > 0.01:  # Only pick up significant amounts
-                    # Update ant's inventory
+                if pickup_amount > 0.01:
                     self.carry_amount = pickup_amount
                     self.carry_type = found_food_type
                     food_idx = found_food_type.value
-                    # Remove food from grid
                     try:
                         grid.food[pos_int[0], pos_int[1], food_idx] = max(0,
                                                                           grid.food[pos_int[0], pos_int[1],
                                                                           food_idx] - pickup_amount)
-                    except IndexError:
-                        pass
-                    # Drop food pheromone at source
+                    except IndexError: pass
                     grid.add_pheromone(pos_int, P_FOOD_AT_SOURCE, "food", food_type=found_food_type)
-                    # Drop recruitment if it's a rich source
                     if food_amount >= RICH_FOOD_THRESHOLD:
                         grid.add_pheromone(pos_int, P_RECRUIT_FOOD, "recruitment")
-                    # Switch state to return
                     self._switch_state(AntState.RETURNING_TO_NEST,
                                        f"Picked {found_food_type.name[:1]}({pickup_amount:.1f})")
-                    self.just_picked_food = True  # Set flag for next tick's pheromone logic
-                    self.target_prey = None  # Stop hunting after picking food
+                    self.just_picked_food = True
+                    self.target_prey = None
 
-            # Drop negative pheromone if moved and found nothing (when searching far from nest)
             elif (moved and not found_food_type and self.state == AntState.SEARCHING and
                   distance_sq(pos_int, nest_pos_int) > (NEST_RADIUS + 3) ** 2):
-                # Drop negative trail at the *previous* location
                 if is_valid_pos(old_pos_int, sim.grid_width, sim.grid_height):
                     grid.add_pheromone(old_pos_int, P_NEGATIVE_SEARCH, "negative")
 
         elif self.state == AntState.RETURNING_TO_NEST:
-            # --- Drop off food at nest ---
             if is_near_nest:
                 dropped_amount = self.carry_amount
                 type_dropped = self.carry_type
-                # If carrying food, drop it
                 if dropped_amount > 0 and type_dropped:
                     if type_dropped == FoodType.SUGAR:
                         sim.colony_food_storage_sugar += dropped_amount
                     elif type_dropped == FoodType.PROTEIN:
                         sim.colony_food_storage_protein += dropped_amount
-                    # Clear inventory
                     self.carry_amount = 0
                     self.carry_type = None
 
-                # Switch back to default state (Search/Patrol)
                 next_state = AntState.SEARCHING
                 state_reason = "Dropped->"
                 if self.caste == AntCaste.WORKER:
-                    # Check needs again before deciding next state
                     sugar_crit = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD
                     protein_crit = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD
-                    if sugar_crit or protein_crit:
-                        state_reason += "SEARCH(Need!)"
-                    else:
-                        state_reason += "SEARCH"
+                    if sugar_crit or protein_crit: state_reason += "SEARCH(Need!)"
+                    else: state_reason += "SEARCH"
                 elif self.caste == AntCaste.SOLDIER:
                     next_state = AntState.PATROLLING
                     state_reason += "PATROL"
                 self._switch_state(next_state, state_reason)
 
-            # --- Drop pheromone trail while returning ---
-            # Drop trail only if moved and *not* immediately after picking food
             elif moved and not local_just_picked:
-                # Drop trail at the *previous* location, avoid dropping inside nest radius
-                if is_valid_pos(old_pos_int, sim.grid_width, sim.grid_height) and distance_sq(old_pos_int,
-                                                                                              nest_pos_int) > (
-                        NEST_RADIUS - 1) ** 2:
-                    # Drop home trail
+                if is_valid_pos(old_pos_int, sim.grid_width, sim.grid_height) and distance_sq(old_pos_int, nest_pos_int) > (NEST_RADIUS - 1) ** 2:
                     grid.add_pheromone(old_pos_int, P_HOME_RETURNING, "home")
-                    # Drop food trail if carrying food
                     if self.carry_amount > 0 and self.carry_type:
                         grid.add_pheromone(old_pos_int, P_FOOD_RETURNING_TRAIL, "food", food_type=self.carry_type)
 
         # --- Stuck Detection and Escape ---
-        # Check if stuck timer exceeds threshold and not already escaping
         if self.stuck_timer >= WORKER_STUCK_THRESHOLD and self.state != AntState.ESCAPING:
-            # Check if stuck state is due to combat or hunting adjacent prey
             is_fighting = False
             is_hunting_adjacent = False
-            neighbors_int_stuck = get_neighbors(pos_int, sim.grid_width, sim.grid_height, True)  # Include center
+            # Re-check neighbors for stuck reason
+            neighbors_int_stuck = get_neighbors(pos_int, sim.grid_width, sim.grid_height, True)
             for p_int in neighbors_int_stuck:
                 if sim.get_enemy_at(p_int):
-                    is_fighting = True;
+                    is_fighting = True
                     break
             if not is_fighting and self.state == AntState.HUNTING and self.target_prey:
-                # Check if the target prey exists and is in a neighbor cell
-                if self.target_prey in sim.prey and self.target_prey.pos in neighbors_int_stuck:
-                    is_hunting_adjacent = True
+                 # Check if the target prey still exists and is adjacent
+                 if self.target_prey in sim.prey and self.target_prey.pos in neighbors_int_stuck:
+                      is_hunting_adjacent = True
 
             # Only enter ESCAPING state if not stuck due to fighting/hunting
             if not is_fighting and not is_hunting_adjacent:
+                # --- DEBUGGING ---
+                # print(f"DEBUG: Ant {id(self)} entering ESCAPING state due to stuck timer.")
+                # ---
                 self._switch_state(AntState.ESCAPING, "Stuck!")
-                self.escape_timer = WORKER_ESCAPE_DURATION  # Set duration for escape behavior
-                self.stuck_timer = 0  # Reset stuck timer
+                self.escape_timer = WORKER_ESCAPE_DURATION
+                self.stuck_timer = 0 # Reset stuck timer only when entering escape
 
     def attack(self, target):
         """Deals damage to a target (Enemy or Prey)."""
