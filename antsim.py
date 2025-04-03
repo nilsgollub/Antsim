@@ -298,7 +298,7 @@ PUPA_COLOR = (200, 180, 150, 220)  # Beige/Brown
 ATTACK_INDICATOR_COLOR_ANT = (255, 255, 100, 180) # Yellowish flash for ant attacks
 ATTACK_INDICATOR_COLOR_ENEMY = (255, 100, 100, 180) # Reddish flash for enemy attacks
 ATTACK_INDICATOR_DURATION_TICKS = 6 # How many ticks the indicator lasts (adjust as needed)
-OBSTACLE_COLOR_VARIATION = 15 # +/- range for obstacle cell color variation
+
 
 # UI Colors
 BUTTON_COLOR = (80, 80, 150)
