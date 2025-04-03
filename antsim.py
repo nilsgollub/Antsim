@@ -152,6 +152,9 @@ SOLDIER_PATROL_RADIUS_MULTIPLIER = 0.2 # Multiplier for NEST_RADIUS
 SOLDIER_DEFEND_ALARM_THRESHOLD = 100.0 # Combined alarm/recruit signal
 ANT_SPEED_BOOST_MULTIPLIER = 0.7 # Multiplier for move delay (lower = faster)
 ANT_SPEED_BOOST_DURATION = 10 # Ticks
+ALARM_SEARCH_RADIUS_SIGNAL = 10  # Radius for searching the strongest alarm/recruitment signal
+ALARM_SEARCH_RADIUS_RANDOM = 20  # Radius for random search around the alarm source
+
 
 
 # Brood Cycle Parameters
@@ -1632,7 +1635,7 @@ class Ant:
             best_signal_pos = None
             max_signal_strength = -1.0
             # Scan a small radius around the ant
-            search_radius_sq = 10 * 10  # Increased from 6*6
+            search_radius_sq = ALARM_SEARCH_RADIUS_SIGNAL * ALARM_SEARCH_RADIUS_SIGNAL  # Increased from 6*6
             x0, y0 = pos_int
             min_scan_x = max(0, x0 - int(search_radius_sq ** 0.5))
             max_scan_x = min(sim.grid_width - 1, x0 + int(search_radius_sq ** 0.5))
@@ -1680,28 +1683,13 @@ class Ant:
             # Wenn eine zufällige Suche gestartet wurde
             if target_pos:
                 dist_next_sq = distance_sq(n_pos_int, target_pos)
-                # Bonus für getting closer to the target
-                if dist_next_sq < dist_now_sq:
-                    score += W_ALARM_SOURCE_DEFEND * 1.5  # Increased
-                else:
-                    # Zufälliges suchen im Umkreis
-                    random_x = random.randint(-self.alarm_search_radius, self.alarm_search_radius)
-                    random_y = random.randint(-self.alarm_search_radius, self.alarm_search_radius)
-                    search = (random_x + pos_int[0], random_y + pos_int[1])
-                    dis_rand_sq = distance_sq(n_pos_int, search)
-                    score += dis_rand_sq * 0.5
-
-            # General attraction to recruitment and *slight repulsion* from high alarm
-            # (move towards the *source*/gradient, not necessarily the highest concentration itself)
-            score += recr_ph * W_RECRUITMENT_PHEROMONE * 1.5  # Increased
-            score += alarm_ph * W_ALARM_PHEROMONE * -1.0  # Slight negative weight for alarm itself
-
-            # Visuelle Wahrnehmung
-            visual_score = self._calculate_visual_score(n_pos_int)
-            score += visual_score
-
-            scores[n_pos_int] = score
-        return scores
+                # Bonus fcore += W_ALARM_SOURCE_DEFEND * 1.5  # Increased
+            else: # Zufälliges suchen im Umkreis
+                random_x = random.randint(-ALARM_SEARCH_RADIUS_RANDOM, ALARM_SEARCH_RADIUS_RANDOM)
+                random_y = random.randint(-ALARM_SEARCH_RADIUS_RANDOM, ALARM_SEARCH_RADIUS_RANDOM)
+                search = (random_x + pos_int[0], random_y + pos_int[1])
+                dis_rand_sq = distance_sq(n_pos_int, search)
+                score += dis_rand_sq * 0.5
 
     def _score_moves_hunting(self, valid_neighbors_int):
         """Scores moves for ants hunting a specific prey target."""
