@@ -1064,67 +1064,6 @@ class Ant:
         self.initial_alarm_direction = None # Richtung, aus der das Alarmpheromon zuerst wahrgenommen wurde
         self.visual_range = 6 # Sichtradius in Zellen
 
-    def _update_state(self):
-        """Überprüft Bedingungen und ändert möglicherweise den Zustand der Ameise."""
-        sim = self.simulation
-        pos_int = self.pos
-        nest_pos_int = sim.nest_pos  # Use dynamic nest position
-
-        # --- Worker: Opportunity Hunting ---
-        # If searching, has no food, no target, and colony needs protein, check for nearby prey
-        if (self.caste == AntCaste.WORKER and
-                self.state == AntState.SEARCHING and
-                self.carry_amount == 0 and not self.target_prey and
-                sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5):
-
-            # Look for prey in a slightly larger radius
-            nearby_prey = sim.find_nearby_prey(pos_int, PREY_FLEE_RADIUS_SQ * 2.5)
-            if nearby_prey:
-                # Sort by distance to target to target the closest one
-                nearby_prey.sort(key=lambda p: distance_sq(pos_int, p.pos))
-                self.target_prey = nearby_prey[0]
-                self._switch_state(AntState.HUNTING, f"HuntPrey@{self.target_prey.pos}")
-                return  # State changed, skip other checks
-
-        # --- Soldier: State Management (Patrol/Defend/Hunt) ---
-        if (self.caste == AntCaste.SOLDIER and
-                # Don't override these critical states
-                self.state not in [AntState.ESCAPING, AntState.RETURNING_TO_NEST]):
-
-            # Check local threat level (alarm/recruitment pheromones)
-            max_alarm = 0.0
-            max_recruit = 0.0
-            search_radius_sq = 10 * 10  # Check nearby cells # Increased from 5*5
-            grid = sim.grid
-            x0, y0 = pos_int
-            min_scan_x = max(0, x0 - int(search_radius_sq ** 0.5))
-            max_scan_x = min(sim.grid_width - 1, x0 + int(search_radius_sq ** 0.5))
-            min_scan_y = max(0, y0 - int(search_radius_sq ** 0.5))
-            max_scan_y = min(sim.grid_height - 1, y0 + int(search_radius_sq ** 0.5))
-
-            for i in range(min_scan_x, max_scan_x + 1):
-                for j in range(min_scan_y, max_scan_y + 1):
-                    p_int = (i, j)
-                    if distance_sq(pos_int, p_int) <= search_radius_sq:
-                        max_alarm = max(max_alarm, grid.get_pheromone(p_int, "alarm"))
-                        max_recruit = max(max_recruit, grid.get_pheromone(p_int, "recruitment"))
-
-            # Combine signals to estimate threat level
-            threat_signal = max_alarm + max_recruit * 0.6
-
-            is_near_nest = distance_sq(pos_int, nest_pos_int) <= sim.soldier_patrol_radius_sq  # Neue Zeile
-
-            # High threat -> Switch to DEFENDING
-            if threat_signal > SOLDIER_DEFEND_ALARM_THRESHOLD * 0.7:  # Reduced threshold
-                if self.state != AntState.DEFENDING:
-                    self._switch_state(AntState.DEFENDING, f"ThreatHi({threat_signal:.0f})!")
-
-                    # Reset alarm search timer and direction
-                    self.alarm_search_timer = 0
-                    self.last_known_alarm_pos = pos_int  # Starte die Suche an der aktuellen Position
-
-                    return  # State changed
-
     def _calculate_visual_score(self, neighbor_pos_int):
         """Berechnet einen Score basierend auf der Sichtbarkeit von Feinden (iteriert über Feinde)."""
         sim = self.simulation
