@@ -2305,15 +2305,18 @@ class Ant:
         # --- NEW: Speed Boost ---
         self.speed_boost_timer = ANT_SPEED_BOOST_DURATION
         self.speed_boost_multiplier = ANT_SPEED_BOOST_MULTIPLIER
+
     def take_damage(self, amount, attacker):
         """Reduces HP and potentially drops pheromones upon being hit."""
         if self.hp <= 0: return  # Already dead
-        self.hp -= amount
-        # If still alive after hit
+
+        # Get grid *before* checking HP and using it
+        grid = self.simulation.grid
+        pos_int = self.pos
+
         if self.hp > 0:
-            grid = self.simulation.grid
-            pos_int = self.pos
-            # Drop alarm pheromone (less amount than during active fight)
+            # Queen taking damage is a major threat
+            # Drop very strong alarm and recruitment signals
             grid.add_pheromone(pos_int, P_ALARM_FIGHT * 1.5, "alarm")  # Increased
             # Drop recruitment pheromone (stronger if soldier)
             recruit_amount = P_RECRUIT_DAMAGE_SOLDIER * 1.5 if self.caste == AntCaste.SOLDIER else P_RECRUIT_DAMAGE * 1.5  # Increased
@@ -2321,11 +2324,6 @@ class Ant:
         else:
             self.hp = 0  # Ensure HP doesn't go negative
             # Ant died, could add logic here (e.g., drop negative pheromone?)
-        # Drop alarm pheromone (less amount than during active fight)
-        grid.add_pheromone(pos_int, P_ALARM_FIGHT * 1.5, "alarm")  # Increased
-        # Drop recruitment pheromone (stronger if soldier)
-        recruit_amount = P_RECRUIT_DAMAGE_SOLDIER * 1.5 if self.caste == AntCaste.SOLDIER else P_RECRUIT_DAMAGE * 1.5  # Increased
-        grid.add_pheromone(pos_int, recruit_amount, "recruitment")
 
 # --- Queen Class ---
 class Queen:
@@ -2560,7 +2558,13 @@ class Enemy:
         """Reduces HP when attacked."""
         if self.hp <= 0: return # Already dead
         self.hp -= amount
-        if self.hp <= 0:
+        if self.hp > 0:
+             # Get grid *before* checking HP and using it
+             grid = self.simulation.grid # Get the grid
+             pos_int = self.pos
+             # Drop alarm pheromone (less amount than during active fight)
+             grid.add_pheromone(pos_int, P_ALARM_FIGHT * 1.5, "alarm")  # Increased
+        else:
              self.hp = 0
              # print(f"Enemy died at {self.pos}") # Optional debug
 
