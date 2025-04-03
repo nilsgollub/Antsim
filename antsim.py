@@ -1098,6 +1098,7 @@ class Prey:
 
 # --- Ant Class ---
 class Ant:
+
     def __init__(self, pos, simulation, caste: AntCaste):
         """Initialisiert eine neue Ameise."""
         self.pos = tuple(map(int, pos))
@@ -1110,71 +1111,48 @@ class Ant:
         self.max_hp = float(attrs["hp"])
         self.attack_power = attrs["attack"]
         self.max_capacity = attrs["capacity"]
-        self.move_delay_base = attrs["speed_delay"] # Base ticks between moves
+        self.move_delay_base = attrs["speed_delay"]  # Base ticks between moves
         self.search_color = attrs["color"]
         self.return_color = attrs["return_color"]
         self.food_consumption_sugar = attrs["food_consumption_sugar"]
         self.food_consumption_protein = attrs["food_consumption_protein"]
-        self.size_factor = attrs["size_factor"] # Used for drawing radius
+        self.size_factor = attrs["size_factor"]  # Used for drawing radius
         self.head_size_factor = attrs["head_size_factor"]  # New: Head size factor
 
         # State variables
         self.state = AntState.SEARCHING
         self.carry_amount = 0.0
         self.carry_type: FoodType | None = None
-        self.age = 0.0 # In ticks
+        self.age = 0.0  # In ticks
         # Calculate max age with Gaussian distribution
         self.max_age_ticks = int(rnd_gauss(WORKER_MAX_AGE_MEAN, WORKER_MAX_AGE_STDDEV))
 
         # Movement and pathfinding
-        self.path_history = [] # List of recently visited (x, y) tuples
-        self.history_timestamps = [] # Simulation ticks corresponding to path_history entries
-        self.move_delay_timer = 0 # Ticks remaining until next move allowed
-        self.last_move_direction = (0, 0) # (dx, dy) of the last move
-        self.stuck_timer = 0 # Ticks spent without moving
-        self.escape_timer = 0.0 # Ticks remaining in ESCAPING state
+        self.path_history = []  # List of recently visited (x, y) tuples
+        self.history_timestamps = []  # Simulation ticks corresponding to path_history entries
+        self.move_delay_timer = 0  # Ticks remaining until next move allowed
+        self.last_move_direction = (0, 0)  # (dx, dy) of the last move
+        self.stuck_timer = 0  # Ticks spent without moving
+        self.escape_timer = 0.0  # Ticks remaining in ESCAPING state
         self.speed_boost_timer = 0.0  # New: Speed boost timer
         self.speed_boost_multiplier = 1.0  # New: Speed boost multiplier
 
         # Status/Debug info
-        self.last_move_info = "Born" # Reason for the last action/decision
-        self.just_picked_food = False # Flag for pheromone logic right after pickup
+        self.last_move_info = "Born"  # Reason for the last action/decision
+        self.just_picked_food = False  # Flag for pheromone logic right after pickup
 
         # Timers
         # Random initial offset for consumption check
         self.food_consumption_timer = rnd_uniform(0, WORKER_FOOD_CONSUMPTION_INTERVAL)
 
         # Targeting/State specific
-        self.last_known_alarm_pos = None # For DEFENDING state
-        self.target_prey: Prey | None = None # For HUNTING state
+        self.last_known_alarm_pos = None  # For DEFENDING state
+        self.target_prey: Prey | None = None  # For HUNTING state
         self.alarm_search_timer = 0  # Timer für die Suche nach Alarm
-        self.alarm_search_radius = 5 # Radius für die zufällige Suche um die Alarmquelle
-        self.initial_alarm_direction = None # Richtung, aus der das Alarmpheromon zuerst wahrgenommen wurde
-        self.visual_range = 6 # Sichtradius in Zellen
-
-    def _calculate_visual_score(self, neighbor_pos_int):
-        """Berechnet einen Score basierend auf der Sichtbarkeit von Feinden (iteriert über Feinde)."""
-        sim = self.simulation
-        pos_int = self.pos
-        score = 0.0
-
-        # Durchlaufe die Liste der Feinde
-        for enemy in sim.enemies:
-            if enemy.hp <= 0: continue  # Überspringe tote Feinde
-
-            enemy_pos = enemy.pos  # Position des Gegners
-
-            # Berechne die quadratische Distanz zwischen dem Nachbarfeld und dem Feind
-            dist_sq = distance_sq(neighbor_pos_int, enemy_pos)
-
-            # Überprüfe, ob sich der Feind im Sichtfeld befindet (quadratische Distanzvergleich für Performance)
-            if dist_sq <= self.visual_range ** 2:
-                # Der Feind ist sichtbar!  Erhöhe den Score, gewichtet mit der Nähe
-                # Höhere Punktzahl, wenn der Feind näher ist
-                score += 1000.0 / (dist_sq + 1)  # Experimentiere mit der Gewichtungsfunktion
-                # Optional: Füge Code hinzu, um die Sicht zu blockieren (z. B. Raycasting)
-
-        return score
+        self.alarm_search_radius = 5  # Radius für die zufällige Suche um die Alarmquelle
+        self.initial_alarm_direction = None  # Richtung, aus der das Alarmpheromon zuerst wahrgenommen wurde
+        self.visual_range = 6  # Sichtradius in Zellen
+        self.visible_enemies = []  # --- NEU: Liste der sichtbaren Feinde ---
 
     def draw(self, surface):
         """Draws the ant onto the given surface."""
@@ -1625,6 +1603,9 @@ class Ant:
         if sim.queen and sim.queen.hp < sim.queen.max_hp * 0.25:
             base_alarm_weighting *= 1.75  # Um 75 % erhöhen
 
+        # --- NEU: Gewichtung für sichtbare Feinde ---
+        visible_enemy_weight = 500.0 # Starker Anreiz, sich sichtbaren Feinden zu nähern
+
         for n_pos_int in valid_neighbors_int:
             score = self._score_moves_base(n_pos_int)
 
@@ -1642,9 +1623,20 @@ class Ant:
                 score += alarm_ph * base_alarm_weighting  # Soldaten werden *angezogen*. Geänderter Wert
                 # neue Alarmposition setzen
                 if alarm_ph > 0: self.last_known_alarm_pos = n_pos_int
-            # Visuelle Wahrnehmung auch im Patrouillen-Modus
-            visual_score = self._calculate_visual_score(n_pos_int)
-            score += visual_score
+
+            # --- NEU: Visuelle Wahrnehmung basierend auf self.visible_enemies ---
+            if self.visible_enemies:
+                 # Bewerte den Zug basierend auf der Nähe zu sichtbaren Feinden
+                 min_dist_sq_to_visible = float('inf')
+                 for enemy in self.visible_enemies:
+                      dist_sq_enemy = distance_sq(n_pos_int, enemy.pos)
+                      min_dist_sq_to_visible = min(min_dist_sq_to_visible, dist_sq_enemy)
+
+                 # Je näher der Zug an einem sichtbaren Feind ist, desto höher der Score
+                 if min_dist_sq_to_visible < float('inf'): # Stelle sicher, dass ein Feind gesehen wurde
+                      score += visible_enemy_weight / (min_dist_sq_to_visible + 1)
+            # --- ENDE NEU ---
+
             # Directional control for patrolling
             dist_sq_next = distance_sq(n_pos_int, nest_pos_int)
 
@@ -2032,6 +2024,11 @@ class Ant:
             self.speed_boost_multiplier = 1.0  # Reset multiplier
             self.move_delay_base = attrs["speed_delay"]  # Reset move delay
 
+        # --- <<< NEU: Visuelle Prüfung einmal pro Update >>> ---
+        self._update_visible_enemies()
+        # --- <<< ENDE NEU >>> ---
+
+
         # --- State Management ---
         # Handle escape timer countdown
         if self.state == AntState.ESCAPING:
@@ -2323,6 +2320,35 @@ class Ant:
         else:
             self.hp = 0  # Ensure HP doesn't go negative
             # Ant died, could add logic here (e.g., drop negative pheromone?)
+
+    def _update_visible_enemies(self):
+        """Aktualisiert die Liste der Feinde im Sichtradius."""
+        sim = self.simulation
+        pos_int = self.pos
+        self.visible_enemies.clear() # Liste für diesen Tick zurücksetzen
+
+        # Optimierung: Nur Feinde prüfen, wenn welche existieren
+        if not sim.enemies:
+             return
+
+        visual_range_sq = self.visual_range ** 2
+
+        # Durchlaufe die globale Liste der Feinde der Simulation
+        # (Eine räumliche Partitionierung wäre hier noch effizienter, aber komplexer)
+        for enemy in sim.enemies:
+            if enemy.hp <= 0: continue # Überspringe tote Feinde
+
+            # Berechne die quadratische Distanz
+            dist_sq = distance_sq(pos_int, enemy.pos)
+
+            # Füge hinzu, wenn im Sichtradius
+            if dist_sq <= visual_range_sq:
+                 # Optional: Hier könnte man noch eine Sichtlinienprüfung (Raycasting)
+                 # einfügen, um Hindernisse zu berücksichtigen.
+                 self.visible_enemies.append(enemy)
+
+        # Optional: Sortiere sichtbare Feinde nach Distanz für spätere Priorisierung
+        # self.visible_enemies.sort(key=lambda e: distance_sq(pos_int, e.pos))
 
 # --- Queen Class ---
 class Queen:
