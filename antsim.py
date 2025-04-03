@@ -1611,10 +1611,19 @@ class Ant:
         nest_pos_int = sim.nest_pos
         dist_sq_current = distance_sq(pos_int, nest_pos_int)
         # Use the configured patrol radius squared
-        # patrol_radius_sq = SOLDIER_PATROL_RADIUS_SQ # Alte Zeile
-        patrol_radius_sq = sim.soldier_patrol_radius_sq  # Neue Zeile
+        patrol_radius_sq = sim.soldier_patrol_radius_sq
         # Define outer boundary slightly beyond patrol radius
         outer_boundary_sq = patrol_radius_sq * 1.4
+
+        # Alarmsuchradius für Soldaten erhöhen
+        alarm_search_radius_sq = 15 * 15
+
+        # Basispriorität
+        base_alarm_weighting = W_ALARM_PHEROMONE * 0.5
+        # Die Gewichtung wird leicht erhöht, wenn sich die Kolonie in Alarmbereitschaft befindet
+        # Beispiel: Wenn die Königin weniger als 25 % Gesundheit hat
+        if sim.queen and sim.queen.hp < sim.queen.max_hp * 0.25:
+            base_alarm_weighting *= 1.75  # Um 75 % erhöhen
 
         for n_pos_int in valid_neighbors_int:
             score = self._score_moves_base(n_pos_int)
@@ -1626,8 +1635,16 @@ class Ant:
 
             score += recr_ph * W_RECRUITMENT_PHEROMONE * 0.7  # Follow recruitment moderately
             score += neg_ph * W_NEGATIVE_PHEROMONE * 0.5  # Slightly avoid negative
-            score += alarm_ph * W_ALARM_PHEROMONE * 0.5  # Slightly avoid alarm
 
+            # Nur anlocken, wenn neue Quelle oder die alte unbekannt ist.
+            if (self.last_known_alarm_pos is None or distance_sq(pos_int,
+                                                                 self.last_known_alarm_pos) > alarm_search_radius_sq):
+                score += alarm_ph * base_alarm_weighting  # Soldaten werden *angezogen*. Geänderter Wert
+                # neue Alarmposition setzen
+                if alarm_ph > 0: self.last_known_alarm_pos = n_pos_int
+            # Visuelle Wahrnehmung auch im Patrouillen-Modus
+            visual_score = self._calculate_visual_score(n_pos_int)
+            score += visual_score
             # Directional control for patrolling
             dist_sq_next = distance_sq(n_pos_int, nest_pos_int)
 
