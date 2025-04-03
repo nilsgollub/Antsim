@@ -289,14 +289,14 @@ FOOD_COLOR_MIX = (230, 200, 230)  # Mix color for UI/Legend
 PHEROMONE_HOME_COLOR = (0, 0, 255, 50)  # Blue (alpha for intensity)
 PHEROMONE_FOOD_SUGAR_COLOR = (180, 180, 255, 50)  # Lighter Blue/Purple (angepasst)
 PHEROMONE_FOOD_PROTEIN_COLOR = (255, 160, 160, 50)  # Lighter Red/Pink (angepasst)
-PHEROMONE_ALARM_COLOR = (255, 0, 0, 180)  # Red
-PHEROMONE_NEGATIVE_COLOR = (150, 150, 150, 100)  # Grey
-PHEROMONE_RECRUITMENT_COLOR = (255, 0, 255, 180)  # Magenta/Pink
+PHEROMONE_ALARM_COLOR = (255, 0, 0, 80)  # Red
+PHEROMONE_NEGATIVE_COLOR = (150, 150, 150, 10)  # Grey
+PHEROMONE_RECRUITMENT_COLOR = (255, 0, 255, 80)  # Magenta/Pink
 EGG_COLOR = (255, 255, 255, 200)  # White (alpha for density)
 LARVA_COLOR = (255, 255, 200, 220)  # Pale Yellow
 PUPA_COLOR = (200, 180, 150, 220)  # Beige/Brown
-ATTACK_INDICATOR_COLOR_ANT = (255, 255, 100, 180) # Yellowish flash for ant attacks
-ATTACK_INDICATOR_COLOR_ENEMY = (255, 100, 100, 180) # Reddish flash for enemy attacks
+ATTACK_INDICATOR_COLOR_ANT = (255, 255, 100, 255) # Yellowish flash for ant attacks
+ATTACK_INDICATOR_COLOR_ENEMY = (255, 100, 100, 255) # Reddish flash for enemy attacks
 ATTACK_INDICATOR_DURATION_TICKS = 6 # How many ticks the indicator lasts (adjust as needed)
 
 
