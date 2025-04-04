@@ -154,7 +154,7 @@ P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
 # Ant Parameters
 INITIAL_ANTS = 10
-MAX_ANTS = 200
+MAX_ANTS = 50
 QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
 WORKER_MAX_AGE_STDDEV = 2000
@@ -307,6 +307,7 @@ BUTTON_TEXT_COLOR = (240, 240, 240)
 END_DIALOG_BG_COLOR = (0, 0, 0, 180) # Semi-transparent black
 LEGEND_BG_COLOR = (10, 10, 30, 180) # Semi-transparent dark blue BG for legend
 LEGEND_TEXT_COLOR = (230, 230, 230)
+AUTO_RESTART_DELAY_SECONDS = 10 # <<< NEU: Zeit in Sekunden für Auto-Neustart nach Tod der Königin
 
 # --- NEW: Font Size Scaling ---
 # Base sizes (will be scaled based on screen height)
@@ -3129,24 +3130,35 @@ class AntSimulation:
                 not self.is_ant_at(pos_int) and  # Checks regular ants and queen
                 not self.is_enemy_at(pos_int) and
                 not self.is_prey_at(pos_int)):
-            ant = Ant(pos_int, self, caste)
-            self.ants.append(ant)
-            self.ant_positions[pos_int] = ant
-            # --- NEW: Add to Spatial Grid ---
-            self.spatial_grid.add_entity(ant)
 
-            # --- NEW: Add to Position Array ---
+            ant = Ant(pos_int, self, caste) # Create the ant object first
+
+            # --- NEUE LOGIK: Zuerst Index im Array sichern ---
+            assigned_index = -1 # Start with invalid index
             if self.next_ant_index < self.max_ants:
-                ant.index = self.next_ant_index
-                self.ant_positions_array[ant.index] = pos_int
-                self.ant_indices[ant] = ant.index
-                self.next_ant_index += 1
+                # Assign index and position in array
+                assigned_index = self.next_ant_index
+                ant.index = assigned_index # Set attribute on the ant object
+                self.ant_positions_array[assigned_index] = pos_int
+                self.ant_indices[ant] = assigned_index
+                self.next_ant_index += 1 # Increment only on success
             else:
-                print("Warning: Max ants reached, cannot add more.")
+                # --- GEÄNDERT: Nicht mehr nur warnen, sondern hier abbrechen ---
+                # print("Warning: Max ants reached, cannot add more.") # Optional: keep warning
+                return False # Cannot add ant if array is full
+
+            # --- GEÄNDERT: Nur hinzufügen, wenn Index erfolgreich zugewiesen wurde ---
+            if assigned_index >= 0:
+                # Add to other structures *after* successful index assignment
+                self.ants.append(ant)
+                self.ant_positions[pos_int] = ant
+                self.spatial_grid.add_entity(ant)
+                return True
+            else:
+                # Should not happen if logic above is correct, but safety catch
                 return False
 
-            return True
-        # else: # Debug failed placement
+        # else: # Debug failed placement (optional)
         # reason = []
         # if self.grid.is_obstacle(pos_int): reason.append("obstacle")
         # if self.is_ant_at(pos_int): reason.append("ant/queen")
@@ -4169,7 +4181,7 @@ class AntSimulation:
         # Return value indicates if speed changed, could be used elsewhere
         return "speed_change" if "speed" in action else action
 
-    def _show_end_game_dialog(self):
+    def _show_end_game_dialog(self, auto_restart_enabled=False): # <<< Parameter hinzugefügt
         """Displays a dialog when a simulation run ends, offering restart or quit."""
         # Ensure font is available
         if not self.font:
@@ -4177,8 +4189,15 @@ class AntSimulation:
             self.app_running = False # Cannot proceed without font
             return "quit"
 
+        # --- <<< NEU: Timer-Variablen >>> ---
+        auto_restart_start_time = None
+        if auto_restart_enabled:
+            auto_restart_start_time = pygame.time.get_ticks() # Startzeit in Millisekunden
+            print(f"Auto-restart timer started ({AUTO_RESTART_DELAY_SECONDS}s)...")
+        # --- <<< ENDE NEU >>> ---
+
         # Dialog dimensions and position (centered)
-        dialog_w, dialog_h = 350, 180 # Slightly larger dialog
+        dialog_w, dialog_h = 350, 210 # <<< Höhe leicht erhöht für Timer-Anzeige
         dialog_x = (self.width - dialog_w) // 2
         dialog_y = (self.height - dialog_h) // 2
 
@@ -4196,6 +4215,7 @@ class AntSimulation:
 
         # Text content and color
         text_color = (240, 240, 240)
+        timer_color = (255, 255, 100) # Gelb für den Timer
         title_text = f"Kolonie {self.colony_generation} Ende"
         reason_text = f"Grund: {self.end_game_reason}"
 
@@ -4205,7 +4225,17 @@ class AntSimulation:
 
         waiting_for_choice = True
         while waiting_for_choice and self.app_running:
+            current_time_ms = pygame.time.get_ticks()
             mouse_pos = pygame.mouse.get_pos()
+
+            # --- <<< NEU: Timer-Prüfung >>> ---
+            if auto_restart_start_time is not None:
+                elapsed_ms = current_time_ms - auto_restart_start_time
+                delay_ms = AUTO_RESTART_DELAY_SECONDS * 1000
+                if elapsed_ms >= delay_ms:
+                    print("Auto-restart timer expired. Restarting simulation.")
+                    return "restart" # Zeit abgelaufen, Neustart erzwingen
+            # --- <<< ENDE NEU >>> ---
 
             # --- Event Handling for Dialog ---
             for event in pygame.event.get():
@@ -4235,12 +4265,23 @@ class AntSimulation:
             try:
                  # Title text centered near top
                  title_surf = self.font.render(title_text, True, text_color)
-                 title_rect = title_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 40)) # Adjusted Y
+                 title_rect = title_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 35)) # Adjusted Y
                  self.screen.blit(title_surf, title_rect)
                  # Reason text centered below title
                  reason_surf = self.font.render(reason_text, True, text_color)
-                 reason_rect = reason_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 80)) # Adjusted Y
+                 reason_rect = reason_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 70)) # Adjusted Y
                  self.screen.blit(reason_surf, reason_rect)
+
+                 # --- <<< NEU: Timer-Text zeichnen >>> ---
+                 if auto_restart_start_time is not None:
+                     remaining_ms = max(0, delay_ms - elapsed_ms)
+                     remaining_sec = remaining_ms / 1000.0
+                     timer_text = f"Automatischer Neustart in {remaining_sec:.1f}s"
+                     timer_surf = self.font.render(timer_text, True, timer_color)
+                     timer_rect = timer_surf.get_rect(center=(dialog_x + dialog_w // 2, dialog_y + 115)) # Position für Timer
+                     self.screen.blit(timer_surf, timer_rect)
+                 # --- <<< ENDE NEU >>> ---
+
             except Exception as e: print(f"Dialog text render error: {e}") # Log errors
 
             # 4. Draw Buttons (with hover effect)
@@ -4329,7 +4370,7 @@ class AntSimulation:
     def run(self):
         """Main application loop: handles simulation runs and end dialog."""
         print("Starting Ant Simulation...")
-        print("Controls: D=Debug | L=Legend | P=Pheromone | ESC=Quit | +/- = Speed") # <<< Geändert
+        print("Controls: D=Debug | L=Legend | P=Pheromone | ESC=Quit | +/- = Speed")
         if ENABLE_NETWORK_STREAM and Flask:
             # Determine accessible IP (this is a guess, might not be correct)
             hostname = STREAMING_HOST if STREAMING_HOST != "0.0.0.0" else "localhost" # Default to localhost if 0.0.0.0
@@ -4381,15 +4422,20 @@ class AntSimulation:
             # If simulation stopped but app is still running
             if not self.end_game_reason: # Set default reason if none provided
                  self.end_game_reason = "Simulation beendet"
+
+            # --- <<< NEU: Prüfen, ob Auto-Neustart aktiviert werden soll >>> ---
+            enable_auto_restart = (self.end_game_reason == "Königin gestorben")
+            # --- <<< ENDE NEU >>> ---
+
             # Show dialog and get user choice ('restart' or 'quit')
-            choice = self._show_end_game_dialog()
+            choice = self._show_end_game_dialog(auto_restart_enabled=enable_auto_restart) # <<< Flag übergeben
 
             if choice == "restart":
                 # Reset the simulation state for a new run
                 self._reset_simulation()
                 # simulation_running flag is set within _reset_simulation
             elif choice == "quit":
-                # User chose Quit in the dialog
+                # User chose Quit in the dialog or loop exited for other reason
                 self.app_running = False # Signal outer loop to terminate
 
         # --- Application Exit ---
