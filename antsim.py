@@ -83,8 +83,8 @@ MAX_FOOD_PER_CELL = 100.0
 INITIAL_COLONY_FOOD_SUGAR = 200.0
 INITIAL_COLONY_FOOD_PROTEIN = 200.0
 RICH_FOOD_THRESHOLD = 50.0
-CRITICAL_FOOD_THRESHOLD = 25.0
-FOOD_REPLENISH_RATE = 120000  # Intervall in Ticks
+CRITICAL_FOOD_THRESHOLD = 200.0
+FOOD_REPLENISH_RATE = 12000  # Intervall in Ticks
 # Food drawing change - adjust how many dots per unit of food
 FOOD_DOTS_PER_UNIT = 0.15 # Lower value = more dots per food unit. Adjust for density.
 FOOD_MAX_DOTS_PER_CELL = 25 # Limit dots per cell for performance/visuals
@@ -119,10 +119,12 @@ MIN_PHEROMONE_DRAW_THRESHOLD = 1.5  # Optimization: Don't draw tiny amounts
 
 # Weights (Influence on ant decision-making)
 W_HOME_PHEROMONE_RETURN = 45.0
-W_FOOD_PHEROMONE_SEARCH_BASE = 40.0
+W_FOOD_PHEROMONE_SEARCH_BASE = 50.0
 W_FOOD_PHEROMONE_SEARCH_LOW_NEED = 5.0
-W_FOOD_PHEROMONE_SEARCH_AVOID = -10.0
+W_FOOD_PHEROMONE_SEARCH_AVOID = -30.0
 W_HOME_PHEROMONE_SEARCH = 0.0
+W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 80.0 # Starkes Gewicht, wenn EINE Ressource KRITISCH ist
+W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = -70.0 # Starke Vermeidung, wenn die andere Ressource KRITISCH ist
 W_ALARM_PHEROMONE = -35.0
 W_NEST_DIRECTION_RETURN = 85.0
 W_NEST_DIRECTION_PATROL = -10.0
@@ -130,9 +132,9 @@ W_ALARM_SOURCE_DEFEND = 500.0 # Increased
 W_PERSISTENCE = 1.5
 W_RANDOM_NOISE = 0.2
 W_NEGATIVE_PHEROMONE = -50.0
-W_RECRUITMENT_PHEROMONE = 200.0 # Increased
+W_RECRUITMENT_PHEROMONE = 250.0 # Increased
 W_AVOID_NEST_SEARCHING = -150.0 # Penalty for searching near nest
-W_HUNTING_TARGET = 300.0
+W_HUNTING_TARGET = 350.0
 W_AVOID_HISTORY = -1000.0  # Strong penalty for revisiting
 
 # Probabilistic Choice Parameters
@@ -140,8 +142,8 @@ PROBABILISTIC_CHOICE_TEMP = 1.0
 MIN_SCORE_FOR_PROB_CHOICE = 0.01
 
 # Pheromone Drop Amounts
-P_HOME_RETURNING = 100.0
-P_FOOD_RETURNING_TRAIL = 60.0
+P_HOME_RETURNING = 120.0
+P_FOOD_RETURNING_TRAIL = 75.0
 P_FOOD_AT_SOURCE = 500.0
 P_ALARM_FIGHT = 200.0 # Increased
 P_NEGATIVE_SEARCH = 10.0
@@ -179,7 +181,7 @@ QUEEN_SOLDIER_RATIO_TARGET = 0.15
 EGG_DURATION = 500 # Ticks
 LARVA_DURATION = 800 # Ticks
 PUPA_DURATION = 600 # Ticks
-LARVA_FOOD_CONSUMPTION_PROTEIN = 0.06
+LARVA_FOOD_CONSUMPTION_PROTEIN = 0.05
 LARVA_FOOD_CONSUMPTION_SUGAR = 0.01
 LARVA_FEED_INTERVAL = 50 # Ticks
 
@@ -197,8 +199,8 @@ ENEMY_NEST_ATTRACTION = 0.05 # Probability to move towards nest
 INITIAL_PREY = 5
 PREY_HP = 25
 PREY_MOVE_DELAY = 2 # Ticks
-PREY_SPAWN_RATE = 600 # Ticks
-PROTEIN_ON_DEATH = 30.0
+PREY_SPAWN_RATE = 500 # Ticks
+PROTEIN_ON_DEATH = 50.0
 PREY_FLEE_RADIUS_SQ = 5 * 5 # Grid cells squared
 
 # Simulation Speed Control
@@ -246,7 +248,7 @@ ANT_ATTRIBUTES = {
     AntCaste.WORKER: {
         "hp": 50,
         "attack": 3,
-        "capacity": 1.5,
+        "capacity": 2.5,
         "speed_delay": 0,
         # New: Use gray base color and subtle state colors
         "color": (200, 200, 200),  # Light Blue for searching
@@ -463,7 +465,8 @@ class BroodItem:
         sim = self.simulation
         current_multiplier = SPEED_MULTIPLIERS[sim.simulation_speed_index]
         if current_multiplier == 0.0: return None
-        self.progress_timer += current_multiplier
+
+        growth_factor = current_multiplier # Standard-Wachstumsfaktor
 
         if self.stage == BroodStage.LARVA:
             # Check food consumption only if enough time has passed
@@ -471,14 +474,26 @@ class BroodItem:
                 self.last_feed_check = current_tick
                 needed_p = LARVA_FOOD_CONSUMPTION_PROTEIN
                 needed_s = LARVA_FOOD_CONSUMPTION_SUGAR
-                has_p = sim.colony_food_storage_protein >= needed_p
-                has_s = sim.colony_food_storage_sugar >= needed_s
-                if has_p and has_s:
+                consumed_p = False
+                consumed_s = False
+
+                # --- <<< GEÄNDERT: Getrennt konsumieren >>> ---
+                if sim.colony_food_storage_protein >= needed_p:
                     sim.colony_food_storage_protein -= needed_p
+                    consumed_p = True
+
+                if sim.colony_food_storage_sugar >= needed_s:
                     sim.colony_food_storage_sugar -= needed_s
-                else:
-                    # Larva doesn't grow if not fed, halt progress
-                    self.progress_timer = max(0.0, self.progress_timer - current_multiplier)
+                    consumed_s = True
+                # --- <<< ENDE ÄNDERUNG >>> ---
+
+                # Optional: Wachstum leicht reduzieren, wenn eine Ressource fehlte
+                if not consumed_p or not consumed_s:
+                     # Wenn eine der Ressourcen fehlte, langsamer wachsen
+                     growth_factor *= 0.75 # Beispiel: Wachstum auf 75% reduzieren
+
+        # Update Fortschritt mit potentiellem Wachstumsfaktor
+        self.progress_timer += growth_factor # <<< Geändert von current_multiplier
 
         # Check for stage progression
         if self.progress_timer >= self.duration:
@@ -488,6 +503,12 @@ class BroodItem:
                 self.last_feed_check = current_tick # Start feed check timer for larva
                 return None # Still brood
             elif self.stage == BroodStage.LARVA:
+                # <<< NEU: Prüfung vor Verpuppung, ob *beide* letzten Fütterungen erfolgreich waren? >>>
+                # Optional, um sicherzustellen, dass sie nicht unterernährt verpuppen.
+                # if not consumed_p or not consumed_s: # Wenn beim letzten Mal was fehlte...
+                #      self.progress_timer = self.duration * 0.9 # ... warte noch etwas
+                #      return None # Noch nicht bereit zum Verpuppen
+
                 self.stage = BroodStage.PUPA
                 self.progress_timer = 0.0; self.duration = PUPA_DURATION; self.color = PUPA_COLOR; self.radius = max(1, int(sim.cell_size / 3.5))
                 return None # Still brood
@@ -1244,7 +1265,7 @@ class Ant:
         if (self.caste == AntCaste.WORKER and
                 self.state == AntState.SEARCHING and
                 self.carry_amount == 0 and not self.target_prey and
-                sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 1.5):
+                sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * 2.5):
 
             # Look for prey in a slightly larger radius
             nearby_prey = sim.find_nearby_prey(pos_int, PREY_FLEE_RADIUS_SQ * 2.5)
@@ -1502,44 +1523,53 @@ class Ant:
         return scores
 
     def _score_moves_searching(self, valid_neighbors_int):
-        """Scores moves for ants searching for food."""
+        """Scores moves for ants searching for food, with dynamic prioritization."""
         scores = {}
         sim = self.simulation
         grid = sim.grid
         nest_pos_int = sim.nest_pos
 
-        # Determine current food needs (weights change based on colony storage)
-        sugar_needed = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD
-        protein_needed = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD
+        # Determine current food needs (flags based on critical threshold)
+        sugar_critically_needed = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD
+        protein_critically_needed = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD
 
-        # Base weights for food pheromones
-        w_sugar = W_FOOD_PHEROMONE_SEARCH_LOW_NEED
-        w_protein = W_FOOD_PHEROMONE_SEARCH_LOW_NEED
+        # --- NEUE LOGIK zur Gewichtungs-Bestimmung ---
+        w_sugar = W_FOOD_PHEROMONE_SEARCH_LOW_NEED    # Default: low interest
+        w_protein = W_FOOD_PHEROMONE_SEARCH_LOW_NEED  # Default: low interest
 
-        # Adjust weights based on specific needs
-        if sugar_needed and not protein_needed:
-             # Need sugar, avoid protein trails
+        if sugar_critically_needed and not protein_critically_needed:
+             # Nur Zucker kritisch: Zucker stark anziehen, Protein stark meiden
+             w_sugar = W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED
+             w_protein = W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID
+             self.last_move_info = "SearchCrit(S)" # Debug Info
+        elif protein_critically_needed and not sugar_critically_needed:
+             # Nur Protein kritisch: Protein stark anziehen, Zucker stark meiden
+             w_protein = W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED
+             w_sugar = W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID
+             self.last_move_info = "SearchCrit(P)" # Debug Info
+        elif sugar_critically_needed and protein_critically_needed:
+             # Beide kritisch: Standard-Gewichte verwenden, leicht zum knapperen tendieren
              w_sugar = W_FOOD_PHEROMONE_SEARCH_BASE
-             w_protein = W_FOOD_PHEROMONE_SEARCH_AVOID
-        elif protein_needed and not sugar_needed:
-             # Need protein, avoid sugar trails
              w_protein = W_FOOD_PHEROMONE_SEARCH_BASE
-             w_sugar = W_FOOD_PHEROMONE_SEARCH_AVOID
-        elif sugar_needed and protein_needed:
-             # Need both, slightly prefer the one that's lower relatively
+             # Optional: Leichte Tendenz zum relativ knapperen, falls gewünscht
              if sim.colony_food_storage_sugar <= sim.colony_food_storage_protein:
-                  w_sugar = W_FOOD_PHEROMONE_SEARCH_BASE * 1.1
-                  w_protein = W_FOOD_PHEROMONE_SEARCH_BASE * 0.9
+                  w_sugar *= 1.1
+                  w_protein *= 0.9
              else:
-                  w_protein = W_FOOD_PHEROMONE_SEARCH_BASE * 1.1
-                  w_sugar = W_FOOD_PHEROMONE_SEARCH_BASE * 0.9
-        else: # Neither critically low, follow general trails moderately
-            if sim.colony_food_storage_sugar <= sim.colony_food_storage_protein * 1.5:
-                 w_sugar = W_FOOD_PHEROMONE_SEARCH_BASE * 0.6 # Slightly prefer sugar if balanced
-            else:
-                 w_protein = W_FOOD_PHEROMONE_SEARCH_BASE * 0.6 # Slightly prefer protein otherwise
+                  w_protein *= 1.1
+                  w_sugar *= 0.9
+             self.last_move_info = "SearchCrit(Both)" # Debug Info
+        else: # Neither critically low
+             # Geringes Interesse an beidem, ggf. leichte Präferenz
+             if sim.colony_food_storage_sugar <= sim.colony_food_storage_protein * 1.5:
+                  w_sugar = W_FOOD_PHEROMONE_SEARCH_LOW_NEED * 1.2 # Etwas mehr Zucker
+             else:
+                  w_protein = W_FOOD_PHEROMONE_SEARCH_LOW_NEED * 1.2 # Etwas mehr Protein
+             self.last_move_info = "SearchLowNeed" # Debug Info
+        # --- ENDE NEUE LOGIK ---
 
-        # Soldiers are less interested in food trails
+
+        # Soldiers are less interested in food trails (scale down the determined weights)
         if self.caste == AntCaste.SOLDIER:
             w_sugar *= 0.1
             w_protein *= 0.1
@@ -1558,7 +1588,7 @@ class Ant:
             alarm_ph = grid.get_pheromone(n_pos_int, "alarm")
             recr_ph = grid.get_pheromone(n_pos_int, "recruitment")
 
-            # Apply weights to pheromones
+            # Apply weights to pheromones (using the dynamically determined w_sugar, w_protein)
             score += sugar_ph * w_sugar
             score += protein_ph * w_protein
 
@@ -2352,6 +2382,7 @@ class Ant:
         # self.visible_enemies.sort(key=lambda e: distance_sq(pos_int, e.pos))
 
 # --- Queen Class ---
+# --- Queen Class ---
 class Queen:
     """Manages queen state, egg laying, and represents the colony's core."""
 
@@ -2362,20 +2393,52 @@ class Queen:
         self.max_hp = float(QUEEN_HP)
         self.age = 0.0  # In ticks
         self.egg_lay_timer_progress = 0.0  # Progress towards next egg lay attempt
-        self.egg_lay_interval_ticks = QUEEN_EGG_LAY_RATE  # Ticks between attempts
+        # --- GEÄNDERT: Initialintervall setzen, kann aber angepasst werden ---
+        self.egg_lay_interval_ticks = float(QUEEN_EGG_LAY_RATE) # Ticks between attempts, start with base rate
         self.color = QUEEN_COLOR
         self.attack_power = 0  # Queen doesn't attack
         self.carry_amount = 0  # Queen doesn't carry food
 
     def update(self, speed_multiplier):
-        """Updates queen's age and handles egg laying."""
+        """Updates queen's age and handles adaptive egg laying based on food."""
         sim = self.simulation
         if speed_multiplier == 0.0: return  # Paused
 
         self.age += speed_multiplier
 
+        # --- <<< NEU: Adaptive Anpassung der Eierlege-Rate >>> ---
+        # Definiere Schwellenwerte für die Nahrungsprüfung
+        # Leicht höher als kritisch, damit sie nicht erst bei 0 reagiert
+        food_low_threshold_factor = 1.5
+        food_very_low_threshold_factor = 0.5
+        sugar_low = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD * food_low_threshold_factor
+        protein_low = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * food_low_threshold_factor
+        sugar_very_low = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD * food_very_low_threshold_factor
+        protein_very_low = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * food_very_low_threshold_factor
+
+        # Passe das Legeintervall an
+        base_rate = float(QUEEN_EGG_LAY_RATE)
+        max_slowdown_factor = 4.0 # Maximal 4x so langsam legen
+        slowdown_increment = 1.05 # Faktor, um das Intervall zu erhöhen (langsamer)
+        speedup_decrement = 0.98 # Faktor, um das Intervall zu verringern (schneller)
+
+        if sugar_very_low or protein_very_low:
+             # Nahrung sehr knapp: Legeintervall stark erhöhen (langsamer legen)
+             self.egg_lay_interval_ticks = min(base_rate * max_slowdown_factor, self.egg_lay_interval_ticks * (slowdown_increment * 1.5)) # Schneller verlangsamen
+        elif sugar_low or protein_low:
+            # Nahrung knapp: Legeintervall erhöhen (langsamer legen)
+            self.egg_lay_interval_ticks = min(base_rate * max_slowdown_factor, self.egg_lay_interval_ticks * slowdown_increment)
+        else:
+            # Genug Nahrung: Legeintervall langsam Richtung Basisrate verringern
+            self.egg_lay_interval_ticks = max(base_rate, self.egg_lay_interval_ticks * speedup_decrement)
+
+        # --- <<< ENDE Adaptive Anpassung >>> ---
+
+
         # --- Egg Laying ---
         self.egg_lay_timer_progress += speed_multiplier
+
+        # Prüfe, ob genug Zeit für einen Legeversuch vergangen ist (mit dem *aktuellen*, adaptiven Intervall)
         if self.egg_lay_timer_progress >= self.egg_lay_interval_ticks:
             self.egg_lay_timer_progress %= self.egg_lay_interval_ticks  # Reset timer
 
@@ -2384,7 +2447,13 @@ class Queen:
                 # print("Maximale Ameisenanzahl erreicht. Königin legt keine Eier mehr.") # Optional: Debug-Ausgabe
                 return  # Beende die Methode, ohne ein Ei zu legen
 
-            # Check if colony has enough resources to lay an egg
+            # --- NEU: Zusätzliche Sicherheitsprüfung: Lege keine Eier, wenn Nahrung *extrem* niedrig ist ---
+            # Dies verhindert das letzte bisschen Verbrauch, bevor die Kolonie stirbt.
+            if sugar_very_low or protein_very_low:
+                 # print("Queen avoids laying egg - food critically low.") # Optional Debug
+                 return # Lege kein Ei
+
+            # Check if colony has enough resources to lay an egg (unabhängig vom Intervall-Check oben)
             needed_s = QUEEN_FOOD_PER_EGG_SUGAR
             needed_p = QUEEN_FOOD_PER_EGG_PROTEIN
             can_lay = (sim.colony_food_storage_sugar >= needed_s and
@@ -2403,7 +2472,7 @@ class Queen:
                 if egg_pos:
                     egg = BroodItem(BroodStage.EGG, caste, egg_pos, int(sim.ticks), sim)
                     sim.add_brood(egg)
-            # else: # Optional: print("Queen cannot lay egg - insufficient food")
+            # else: # Optional: print("Queen cannot lay egg - insufficient food for this specific egg")
 
     def _decide_caste(self):
         """Decides whether to lay a worker or soldier egg based on colony ratio."""
@@ -3582,6 +3651,7 @@ class AntSimulation:
                     # Ensure latest_frame_bytes is None or empty on error?
                     with latest_frame_lock:
                         latest_frame_bytes = None
+        # Stats:
 
     def _spawn_hatched_ant(self, caste: AntCaste, pupa_pos_int: tuple):
         """Tries to spawn a newly hatched ant at or near the pupa's position."""
