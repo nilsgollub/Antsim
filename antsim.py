@@ -68,6 +68,13 @@ CELL_SIZE = 12
 # NEST_POS = (GRID_WIDTH // 2, GRID_HEIGHT // 2)
 # ----------------------------------------------------------
 
+# --- Logging Configuration ---
+ENABLE_SIMULATION_LOGGING = True # Set to False to disable logging
+SIMULATION_LOG_FILE = "antsim_log.csv" # Log filename
+LOGGING_INTERVAL_TICKS = 100 # How often to write a log entry (in simulation ticks)
+LOG_HEADER = "Tick,Generation,Sugar,Protein,Ants,Workers,Soldiers,Eggs,Larvae,Pupae,Enemies,Prey\n" # CSV Header
+
+
 MAP_BG_COLOR = (20, 20, 10)
 
 # Nest (Radius is in grid cells)
@@ -75,16 +82,16 @@ NEST_RADIUS = 3 # Relative to grid center
 
 # Food
 NUM_FOOD_TYPES = 2 # len(FoodType) - Hardcoded for clarity below
-INITIAL_FOOD_CLUSTERS = 6
+INITIAL_FOOD_CLUSTERS = 2
 FOOD_PER_CLUSTER = 250
 FOOD_CLUSTER_RADIUS = 5 # In grid cells
-MIN_FOOD_DIST_FROM_NEST = 10 # In grid cells (relative to nest center)
+MIN_FOOD_DIST_FROM_NEST = 30 # In grid cells (relative to nest center)
 MAX_FOOD_PER_CELL = 100.0
 INITIAL_COLONY_FOOD_SUGAR = 200.0
 INITIAL_COLONY_FOOD_PROTEIN = 200.0
 RICH_FOOD_THRESHOLD = 50.0
 CRITICAL_FOOD_THRESHOLD = 200.0
-FOOD_REPLENISH_RATE = 12000  # Intervall in Ticks
+FOOD_REPLENISH_RATE = 20000  # Intervall in Ticks
 # Food drawing change - adjust how many dots per unit of food
 FOOD_DOTS_PER_UNIT = 0.15 # Lower value = more dots per food unit. Adjust for density.
 FOOD_MAX_DOTS_PER_CELL = 25 # Limit dots per cell for performance/visuals
@@ -95,7 +102,7 @@ FOOD_DOT_RADIUS = 1 # Pixel radius of food dots
 
 
 # Obstacles
-NUM_OBSTACLES = 5
+NUM_OBSTACLES = 4 #5
 MIN_OBSTACLE_SIZE = 1 # In grid cells (Used by old rectangle method)
 MAX_OBSTACLE_SIZE = 5 # In grid cells (Used by old rectangle method)
 OBSTACLE_COLOR = (100, 100, 100) # <--- HIER IST DIE DEFINITION
@@ -108,7 +115,7 @@ OBSTACLE_COLOR_VARIATION = 15 # +/- range for obstacle cell color variation
 
 # Pheromones
 PHEROMONE_MAX = 1000.0
-PHEROMONE_DECAY = 0.9995  # Geänderter Wert
+PHEROMONE_DECAY = 0.9996  # Geänderter Wert
 PHEROMONE_DIFFUSION_RATE = 0.02  # Geänderter Wert
 NEGATIVE_PHEROMONE_DECAY = 0.995  # Geänderter Wert
 NEGATIVE_PHEROMONE_DIFFUSION_RATE = 0.03  # Geänderter Wert
@@ -123,27 +130,28 @@ W_FOOD_PHEROMONE_SEARCH_BASE = 50.0
 W_FOOD_PHEROMONE_SEARCH_LOW_NEED = 5.0
 W_FOOD_PHEROMONE_SEARCH_AVOID = -30.0
 W_HOME_PHEROMONE_SEARCH = 0.0
-W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 80.0 # Starkes Gewicht, wenn EINE Ressource KRITISCH ist
-W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = -70.0 # Starke Vermeidung, wenn die andere Ressource KRITISCH ist
-W_ALARM_PHEROMONE = -35.0
-W_NEST_DIRECTION_RETURN = 85.0
+W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 100.0 # Starkes Gewicht, wenn EINE Ressource KRITISCH ist
+W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = 0.0 # Starke Vermeidung, wenn die andere Ressource KRITISCH ist
+W_ALARM_PHEROMONE = 0
+W_NEST_DIRECTION_RETURN = 100.0
 W_NEST_DIRECTION_PATROL = -10.0
 W_ALARM_SOURCE_DEFEND = 500.0 # Increased
 W_PERSISTENCE = 1.5
 W_RANDOM_NOISE = 0.2
 W_NEGATIVE_PHEROMONE = -50.0
 W_RECRUITMENT_PHEROMONE = 250.0 # Increased
-W_AVOID_NEST_SEARCHING = -150.0 # Penalty for searching near nest
+W_AVOID_NEST_SEARCHING = -250.0 # Penalty for searching near nest
 W_HUNTING_TARGET = 350.0
-W_AVOID_HISTORY = -1000.0  # Strong penalty for revisiting
+W_AVOID_HISTORY = -200.0  # Strong penalty for revisiting
+W_REPULSION = 20 # Repulsion from other ants
 
 # Probabilistic Choice Parameters
 PROBABILISTIC_CHOICE_TEMP = 1.0
 MIN_SCORE_FOR_PROB_CHOICE = 0.01
 
 # Pheromone Drop Amounts
-P_HOME_RETURNING = 120.0
-P_FOOD_RETURNING_TRAIL = 75.0
+P_HOME_RETURNING = 50.0
+P_FOOD_RETURNING_TRAIL = 120.0
 P_FOOD_AT_SOURCE = 500.0
 P_ALARM_FIGHT = 200.0 # Increased
 P_NEGATIVE_SEARCH = 10.0
@@ -161,7 +169,7 @@ QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
 WORKER_MAX_AGE_STDDEV = 2000
 WORKER_PATH_HISTORY_LENGTH = 8 # In ticks
-WORKER_STUCK_THRESHOLD = 60 # In ticks
+WORKER_STUCK_THRESHOLD = 30 # In ticks
 WORKER_ESCAPE_DURATION = 30 # In ticks
 WORKER_FOOD_CONSUMPTION_INTERVAL = 100 # In ticks
 SOLDIER_PATROL_RADIUS_MULTIPLIER = 0.2 # Multiplier for NEST_RADIUS
@@ -199,8 +207,8 @@ ENEMY_NEST_ATTRACTION = 0.05 # Probability to move towards nest
 INITIAL_PREY = 5
 PREY_HP = 25
 PREY_MOVE_DELAY = 2 # Ticks
-PREY_SPAWN_RATE = 500 # Ticks
-PROTEIN_ON_DEATH = 50.0
+PREY_SPAWN_RATE = 1000 # Ticks
+PROTEIN_ON_DEATH = 20.0
 PREY_FLEE_RADIUS_SQ = 5 * 5 # Grid cells squared
 
 # Simulation Speed Control
@@ -1401,7 +1409,7 @@ class Ant:
         potential_neighbors_int = get_neighbors(self.pos, sim.grid_width, sim.grid_height)
         if not potential_neighbors_int:
             self.last_move_info = "No neighbors"
-            return None # Cannot move
+            return None  # Cannot move
 
         # Filter valid moves (no obstacles, ants, history etc.)
         # Allow moving into history when returning near nest to avoid getting stuck
@@ -1415,10 +1423,10 @@ class Ant:
             fallback_neighbors_int = []
             q_pos_int = sim.queen.pos if sim.queen else None
             for n_pos_int in potential_neighbors_int:
-                 if (n_pos_int != q_pos_int and
-                     not sim.grid.is_obstacle(n_pos_int) and
-                     not sim.is_ant_at(n_pos_int, exclude_self=self)):
-                     fallback_neighbors_int.append(n_pos_int)
+                if (n_pos_int != q_pos_int and
+                        not sim.grid.is_obstacle(n_pos_int) and
+                        not sim.is_ant_at(n_pos_int, exclude_self=self)):
+                    fallback_neighbors_int.append(n_pos_int)
 
             # If fallback options exist, prefer the oldest visited one
             if fallback_neighbors_int:
@@ -1426,7 +1434,7 @@ class Ant:
                 fallback_neighbors_int.sort(key=lambda p: self.path_history.index(p) if p in self.path_history else -1)
                 # Choose the path visited longest ago
                 return fallback_neighbors_int[0]
-            return None # Truly blocked
+            return None  # Truly blocked
 
         # --- State-Specific Move Logic ---
 
@@ -1455,8 +1463,9 @@ class Ant:
 
         # Calculate scores for all valid moves
         # Pass just_picked flag only for returning state scoring
-        move_scores = score_func(valid_neighbors_int, self.just_picked_food) if self.state == AntState.RETURNING_TO_NEST else score_func(valid_neighbors_int)
-
+        move_scores = score_func(valid_neighbors_int,
+                                 self.just_picked_food) if self.state == AntState.RETURNING_TO_NEST else score_func(
+            valid_neighbors_int)
 
         # If no scores calculated (e.g., error or no valid moves scored):
         if not move_scores:
@@ -1467,11 +1476,12 @@ class Ant:
         # Select the best move based on scores and state logic
         selected_move_int = None
         if self.state == AntState.RETURNING_TO_NEST:
-            selected_move_int = self._select_best_move_returning(move_scores, valid_neighbors_int, self.just_picked_food)
+            selected_move_int = self._select_best_move_returning(move_scores, valid_neighbors_int,
+                                                                 self.just_picked_food)
         elif self.state in [AntState.DEFENDING, AntState.HUNTING]:
             # For urgent states, pick the absolute best score
             selected_move_int = self._select_best_move(move_scores, valid_neighbors_int)
-        else: # SEARCHING, PATROLLING
+        else:  # SEARCHING, PATROLLING
             # Use probabilistic choice to allow exploration
             selected_move_int = self._select_probabilistic_move(move_scores, valid_neighbors_int)
 
@@ -2409,8 +2419,8 @@ class Queen:
         # --- <<< NEU: Adaptive Anpassung der Eierlege-Rate >>> ---
         # Definiere Schwellenwerte für die Nahrungsprüfung
         # Leicht höher als kritisch, damit sie nicht erst bei 0 reagiert
-        food_low_threshold_factor = 1.5
-        food_very_low_threshold_factor = 0.5
+        food_low_threshold_factor = 1.0
+        food_very_low_threshold_factor = 0.2
         sugar_low = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD * food_low_threshold_factor
         protein_low = sim.colony_food_storage_protein < CRITICAL_FOOD_THRESHOLD * food_low_threshold_factor
         sugar_very_low = sim.colony_food_storage_sugar < CRITICAL_FOOD_THRESHOLD * food_very_low_threshold_factor
@@ -2744,52 +2754,62 @@ class Enemy:
 class AntSimulation:
     """Manages the overall simulation state, entities, drawing, and UI."""
 
-    def __init__(self):
-        self.app_running = True  # Flag to control the main application loop
-        self.simulation_running = False  # Flag to control the current simulation run
+    def __init__(self, log_filename=None): # <<< Parameter hinzugefügt
+        print("[Debug] AntSimulation.__init__ started.") # Debug Print
+        self.app_running = True
+        self.simulation_running = False
+        # --- <<< Logging-Attribute >>> ---
+        self.log_filename = log_filename if ENABLE_SIMULATION_LOGGING else None
+        self.logging_interval = LOGGING_INTERVAL_TICKS
+        print(f"[Debug]   Log filename set to: {self.log_filename}") # Debug Print
 
         # --- Pygame and Display Initialization ---
+        print("[Debug]   Initializing Pygame...") # Debug Print
         try:
             pygame.init()
             if not pygame.display.get_init():
                 raise RuntimeError("Display module failed")
             os.environ['SDL_VIDEO_CENTERED'] = '1'  # Center window
             pygame.display.set_caption("Ant Simulation - Responsive")
+            print("[Debug]   Pygame initialized.") # Debug Print
 
             # Determine Screen/Window Size
             screen_info = pygame.display.Info()
             monitor_width, monitor_height = screen_info.current_w, screen_info.current_h
-            print(f"Detected Monitor Size: {monitor_width}x{monitor_height}")
+            print(f"[Debug]   Detected Monitor Size: {monitor_width}x{monitor_height}") # Debug Print
 
             if USE_FULLSCREEN:
                 self.screen_width = monitor_width
                 self.screen_height = monitor_height
                 display_flags = pygame.FULLSCREEN | pygame.DOUBLEBUF | pygame.HWSURFACE
-                print("Using Fullscreen Mode")
+                print("[Debug]   Using Fullscreen Mode") # Debug Print
             else:
                 target_w, target_h = DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT
                 if USE_SCREEN_PERCENT is not None and 0.1 <= USE_SCREEN_PERCENT <= 1.0:
                     target_w = int(monitor_width * USE_SCREEN_PERCENT)
                     target_h = int(monitor_height * USE_SCREEN_PERCENT)
-                    print(f"Using {USE_SCREEN_PERCENT * 100:.0f}% of screen: {target_w}x{target_h}")
+                    print(f"[Debug]   Using {USE_SCREEN_PERCENT * 100:.0f}% of screen: {target_w}x{target_h}") # Debug Print
                 else:
-                    print(f"Using Default Window Size: {target_w}x{target_h}")
+                    print(f"[Debug]   Using Default Window Size: {target_w}x{target_h}") # Debug Print
                 # Ensure window is not larger than monitor
                 self.screen_width = min(target_w, monitor_width)
                 self.screen_height = min(target_h, monitor_height)
                 display_flags = pygame.DOUBLEBUF  # Use default flags for windowed
 
             # Set the display mode
+            print("[Debug]   Setting display mode...") # Debug Print
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), display_flags)
-            print(f"Set Display Mode: {self.screen.get_width()}x{self.screen.get_height()}")
+            print(f"[Debug]   Set Display Mode: {self.screen.get_width()}x{self.screen.get_height()}") # Debug Print
 
         except Exception as e:
-            print(f"FATAL: Pygame/Display initialization failed: {e}")
+            print(f"[Debug]   FATAL: Pygame/Display init failed: {e}") # Debug Print
             traceback.print_exc()
             self.app_running = False
+            print(f"[Debug] AntSimulation.__init__ aborted (Pygame/Display Error). self.app_running = {self.app_running}") # Debug Print
             return  # Cannot continue
 
         # --- Calculate Grid Dimensions based on Screen ---
+        print("[Debug]   Calculating grid dimensions...") # Debug Print
         self.cell_size = CELL_SIZE
         # Ensure grid dimensions are at least 1
         self.grid_width = max(1, self.screen.get_width() // self.cell_size)
@@ -2799,28 +2819,32 @@ class AntSimulation:
         self.height = self.grid_height * self.cell_size
         # Adjust screen surface size if calculated grid is smaller than requested window
         if self.width < self.screen.get_width() or self.height < self.screen.get_height():
-            print(f"Adjusting screen surface to grid dimensions: {self.width}x{self.height}")
+            print(f"[Debug]   Adjusting screen surface to grid dimensions: {self.width}x{self.height}") # Debug Print
             self.screen = pygame.display.set_mode((self.width, self.height), display_flags)
 
         # --- Calculate Nest Position (Center of Grid) ---
         self.nest_pos = (self.grid_width // 2, self.grid_height // 2)
-        print(
-            f"Calculated Grid: {self.grid_width}x{self.grid_height}, Cell Size: {self.cell_size}, Nest: {self.nest_pos}")
+        print(f"[Debug]   Calculated Grid: {self.grid_width}x{self.grid_height}, Cell Size: {self.cell_size}, Nest: {self.nest_pos}") # Debug Print
 
         # --- Initialize Fonts (Scaled) ---
+        print("[Debug]   Initializing fonts...") # Debug Print
         self.font = None
         self.debug_font = None
         self.legend_font = None
         self._init_fonts()  # Initialize after screen size is known
-        if not self.app_running:
-            return  # Font init might fail
+        if not self.app_running: # _init_fonts sets self.app_running to False on failure
+             print("[Debug]   Font initialization failed (detected after call).") # Debug Print
+             print(f"[Debug] AntSimulation.__init__ aborted (Font Error). self.app_running = {self.app_running}") # Debug Print
+             return # Font init might fail
+        print("[Debug]   Fonts initialized.") # Debug Print
 
         # --- Simulation State Variables ---
+        print("[Debug]   Initializing simulation state variables...") # Debug Print
         self.clock = pygame.time.Clock()
         self.grid = WorldGrid(self.grid_width, self.grid_height)
         self.end_game_reason = ""
         self.colony_generation = 0
-        self.ticks = 0.0  # Use float for accumulated time with speed multiplier
+        self.ticks = 0.0
         self.soldier_patrol_radius_sq = (NEST_RADIUS * SOLDIER_PATROL_RADIUS_MULTIPLIER) ** 2
 
         # Entity Lists and Position Lookups
@@ -2829,19 +2853,17 @@ class AntSimulation:
         self.brood = []
         self.prey = []
         self.queen: Queen | None = None
-        self.ant_positions = {}  # { (x, y): ant_instance }
+        self.ant_positions = {}
         self.enemy_positions = {}
         self.prey_positions = {}
-        self.brood_positions = {}  # { (x, y): [brood_item1, brood_item2,...] }
-        self.recent_attacks = []  # --- For attack indicators ---
+        self.brood_positions = {}
+        self.recent_attacks = []
 
-        # --- NEW: Ant Position Array ---
-        self.max_ants = MAX_ANTS  # Store max ants for array size
-        # Use float for position to avoid potential issues, or keep int if sure
-        # self.ant_positions_array = np.full((self.max_ants, 2), -1.0, dtype=np.float32) # Example with float
-        self.ant_positions_array = np.full((self.max_ants, 2), -1, dtype=np.int16)  # Sticking with int16
-        self.ant_indices = {}  # {ant_instance: index in array}
-        self.next_ant_index = 0  # Tracks next available index (for efficient adding)
+        # Ant Position Array
+        self.max_ants = MAX_ANTS
+        self.ant_positions_array = np.full((self.max_ants, 2), -1, dtype=np.int16)
+        self.ant_indices = {}
+        self.next_ant_index = 0
 
         # Colony Resources
         self.colony_food_storage_sugar = 0.0
@@ -2854,36 +2876,57 @@ class AntSimulation:
         self.prey_spawn_interval_ticks = PREY_SPAWN_RATE
         self.food_replenish_timer = 0.0
         self.food_replenish_interval_ticks = FOOD_REPLENISH_RATE
+        print("[Debug]   Simulation state variables initialized.") # Debug Print
 
         # UI State
+        print("[Debug]   Initializing UI state...") # Debug Print
         self.show_debug_info = True
         self.show_legend = False
-        self.show_pheromones = False  # Zustand für Pheromon-Anzeige
+        self.show_pheromones = False # Standardmäßig AUS
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
-        self.buttons = self._create_buttons()  # Create after screen size and font are known
+        self.buttons = self._create_buttons()
+        print("[Debug]   UI state initialized.") # Debug Print
 
         # Drawing Surfaces
+        print("[Debug]   Initializing drawing surfaces...") # Debug Print
         self.static_background_surface = pygame.Surface((self.width, self.height))
-        self.latest_frame_surface = None  # For network streaming
+        self.latest_frame_surface = None
         self.food_dot_rng = random.Random()
-        # --- <<< NEU: Pheromon Cache Surface >>> ---
         self.pheromone_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        self.pheromone_surface.fill((0, 0, 0, 0))  # Start transparent
-        self.last_pheromone_update_tick = -100  # Initialize to ensure first draw happens
-        # --- <<< ENDE NEU >>> ---
-        self._prepare_static_background()  # Draw initial obstacles here
+        self.pheromone_surface.fill((0, 0, 0, 0))
+        self.last_pheromone_update_tick = -100
+        print("[Debug]   Drawing surfaces initialized.") # Debug Print
+
+        print("[Debug]   Preparing static background...") # Debug Print
+        self._prepare_static_background()
+        print("[Debug]   Static background prepared.") # Debug Print
 
         # --- Spatial Grid ---
-        self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)  # Use pixel width/height
+        print("[Debug]   Initializing spatial grid...") # Debug Print
+        self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)
+        print("[Debug]   Spatial grid initialized.") # Debug Print
 
         # --- Start Optional Network Stream ---
+        print("[Debug]   Starting streaming server (if enabled)...") # Debug Print
         self._start_streaming_server_if_enabled()
+        print("[Debug]   Streaming server handled.") # Debug Print
 
         # --- Initial Simulation Reset ---
-        if self.app_running:  # Only reset if init was successful so far
+        print("[Debug]   Performing initial simulation reset...") # Debug Print
+        if self.app_running:
             self._reset_simulation()
-            # Note: simulation_running flag is set to True inside _reset_simulation
+            # _reset_simulation sets self.simulation_running = True if successful
+            if not self.simulation_running: # Check if reset failed internally
+                 print("[Debug]   Simulation reset failed to set simulation_running flag.")
+                 self.app_running = False # Ensure app doesn't proceed
+            else:
+                 print("[Debug]   Simulation reset successful.") # Debug Print
+        else:
+            # This case happens if Pygame/Font init failed earlier
+            print("[Debug]   Skipping simulation reset because app_running was already False.") # Debug Print
+
+        print(f"[Debug] AntSimulation.__init__ finished. self.app_running = {self.app_running}") # Debug Print
 
     def _init_fonts(self):
         """Initializes fonts, scaling them based on screen height."""
@@ -3017,6 +3060,8 @@ class AntSimulation:
             self.app_running = False
             self.end_game_reason = "Initialisierungsfehler"
             return
+
+        self.food_replenish_interval_ticks = int(FOOD_REPLENISH_RATE * math.sqrt(self.grid_width * self.grid_height) / math.sqrt(150 * 80))  # Anpassung an die Map-Größe
 
         # Reset speed and start simulation
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
@@ -3542,6 +3587,7 @@ class AntSimulation:
 
         # Increment simulation time
         self.ticks += current_multiplier
+        current_int_tick = int(self.ticks) # Für Logging verwenden
 
         # --- Update Queen ---
         if self.queen:
@@ -3556,7 +3602,7 @@ class AntSimulation:
         for item in brood_copy:
             # Check if item still exists (might have been removed if invalid?)
             if item in self.brood:
-                hatch_signal = item.update(self.ticks)  # Pass current tick
+                hatch_signal = item.update(current_tick=current_int_tick)  # <<< Pass current_int_tick
                 if hatch_signal:  # Returns self if hatched
                     hatched_pupae.append(hatch_signal)
 
@@ -3605,8 +3651,8 @@ class AntSimulation:
         if not self.simulation_running: return  # Queen death stops sim
 
         # --- Update Grid Systems ---
-        if int(self.ticks) % 3 == 0:  # Nur alle 3 Ticks
-            self.grid.update_pheromones(current_multiplier)
+        # Pheromone diffusion/decay happens based on its own logic/timer within draw_grid now (caching)
+        # self.grid.update_pheromones(current_multiplier) # This might be redundant if handled by drawing cache
 
         # --- Spawning Timers ---
         # Enemy Spawning
@@ -3631,6 +3677,42 @@ class AntSimulation:
             self.food_replenish_timer %= self.food_replenish_interval_ticks
             self.grid.replenish_food(self.nest_pos)  # Pass nest pos for placement logic
 
+
+        # --- <<< NEU: Logging >>> ---
+        if self.log_filename and current_int_tick % self.logging_interval == 0:
+            try:
+                # Sammle die Statistiken
+                ant_c = len(self.ants)
+                w_c = sum(1 for a in self.ants if a.caste == AntCaste.WORKER)
+                s_c = ant_c - w_c
+                brood_c = len(self.brood)
+                e_c = sum(1 for b in self.brood if b.stage == BroodStage.EGG)
+                l_c = sum(1 for b in self.brood if b.stage == BroodStage.LARVA)
+                p_c = brood_c - e_c - l_c
+                enemy_c = len(self.enemies)
+                prey_c = len(self.prey)
+
+                # Formatiere die Zeile
+                log_line = (
+                    f"{current_int_tick},{self.colony_generation},"
+                    f"{self.colony_food_storage_sugar:.2f},{self.colony_food_storage_protein:.2f},"
+                    f"{ant_c},{w_c},{s_c},"
+                    f"{e_c},{l_c},{p_c},"
+                    f"{enemy_c},{prey_c}\n"
+                )
+
+                # Öffne Datei im Append-Modus, schreibe und schließe sofort wieder
+                # Das ist sicherer, falls die Simulation abstürzt.
+                with open(self.log_filename, 'a') as f:
+                    f.write(log_line)
+
+            except Exception as e:
+                print(f"ERROR writing to log file '{self.log_filename}': {e}")
+                # Optional: Logging für den Rest des Laufs deaktivieren
+                # self.log_filename = None
+        # --- <<< ENDE NEU: Logging >>> ---
+
+
         # --- Frame Capture for Network Streaming ---
         if ENABLE_NETWORK_STREAM and Flask and streaming_thread and streaming_thread.is_alive():
             # Check if draw() method has produced a surface to stream
@@ -3651,7 +3733,6 @@ class AntSimulation:
                     # Ensure latest_frame_bytes is None or empty on error?
                     with latest_frame_lock:
                         latest_frame_bytes = None
-        # Stats:
 
     def _spawn_hatched_ant(self, caste: AntCaste, pupa_pos_int: tuple):
         """Tries to spawn a newly hatched ant at or near the pupa's position."""
@@ -4539,48 +4620,50 @@ class AntSimulation:
             print(f"Error during Pygame quit: {e}")
 
 # --- Start Simulation ---
+# --- Start Simulation ---
 if __name__ == "__main__":
     print("Initializing simulation environment...")
-    # Basic checks for required libraries
-    if 'pygame' not in sys.modules: print("FATAL: Pygame module not imported correctly."); exit()
-    if 'numpy' not in sys.modules: print("FATAL: NumPy module not imported correctly."); exit()
-    if 'scipy' not in sys.modules: print("FATAL: SciPy module not imported correctly."); exit()
-
+    # ... (Basic library checks) ...
     print(f"Pygame version: {pygame.version.ver}")
-    print(f"NumPy version: {np.__version__}")
-    # Use scipy.__version__ for SciPy
-    try:
-        print(f"SciPy version: {scipy.__version__}")
-    except NameError: # Catch if scipy failed to import earlier
-        print("SciPy not fully loaded.")
-
+    # ... (Print other versions) ...
     if Flask: print(f"Flask found. Network streaming enabled: {ENABLE_NETWORK_STREAM}")
     else: print("Flask not found (Network Streaming disabled).")
 
-    initialization_success = False
-    simulation_instance = None # Initialize to None
-
-    # --- Profiling Setup ---
-    # Set to True to enable profiling
-    ENABLE_PROFILING = False # <<< Set to False to disable profiling
-    profiler = None
-    if ENABLE_PROFILING:
+    # --- <<< NEU: Logging-Datei vorbereiten >>> ---
+    log_file_to_pass = None
+    if ENABLE_SIMULATION_LOGGING:
+        log_file_to_pass = SIMULATION_LOG_FILE
         try:
-            import cProfile
-            import pstats
-            profiler = cProfile.Profile()
-            print("INFO: cProfile enabled.")
-        except ImportError:
-            print("WARNING: cProfile module not found. Profiling disabled.")
-            ENABLE_PROFILING = False
-    # ---------------------
+            # Prüfen, ob Datei existiert und leer ist, um Header zu schreiben
+            file_exists = os.path.exists(log_file_to_pass)
+            is_empty = not file_exists or os.path.getsize(log_file_to_pass) == 0
+
+            # Öffne im Append-Modus ('a'). Erstellt die Datei, wenn sie nicht existiert.
+            with open(log_file_to_pass, 'a') as f:
+                if is_empty:
+                    print(f"Writing header to new log file: {log_file_to_pass}")
+                    f.write(LOG_HEADER)
+            print(f"Logging enabled. Data will be appended to: {log_file_to_pass}")
+        except Exception as e:
+            print(f"ERROR preparing log file '{log_file_to_pass}': {e}")
+            print("Disabling logging for this session.")
+            log_file_to_pass = None # Logging deaktivieren bei Fehler
+            ENABLE_SIMULATION_LOGGING = False # Flag auch ändern
+    else:
+        print("Simulation logging is disabled.")
+    # --- <<< ENDE NEU >>> ---
+
+
+    initialization_success = False
+    simulation_instance = None
+
+    ENABLE_PROFILING = False # <<< Set to False to disable profiling
+    # ... (Profiling Setup) ...
 
     try:
-        # Pygame initialization is now handled within AntSimulation.__init__
-        # We just need to ensure the class can be instantiated.
         print("Attempting to initialize AntSimulation...")
-        simulation_instance = AntSimulation()
-        # Check if initialization within the class failed
+        # --- <<< GEÄNDERT: Log-Dateiname übergeben >>> ---
+        simulation_instance = AntSimulation(log_filename=log_file_to_pass)
         if simulation_instance.app_running:
              initialization_success = True
              print("AntSimulation initialized successfully.")
@@ -4588,56 +4671,21 @@ if __name__ == "__main__":
              print("AntSimulation initialization failed (check logs above).")
 
     except Exception as e:
-        print(f"\n--- FATAL ERROR DURING INITIALIZATION ---")
-        traceback.print_exc()
-        print("-----------------------------------------")
-        initialization_success = False
-        # Attempt cleanup even on init error
-        try: pygame.quit()
-        except Exception: pass
-        input("Press Enter to Exit.")
+        # ... (Error Handling) ...
         exit()
 
 
     if initialization_success:
         print("\nStarting simulation run...")
         try:
-            # --- Start Profiling ---
-            if ENABLE_PROFILING and profiler:
-                print("Starting profiler...")
-                profiler.enable()
-            # -----------------------
+            # ... (Start Profiling) ...
 
-            # Run the main simulation loop
-            simulation_instance.run()
+            simulation_instance.run() # Haupt-Loop
 
-            # --- Stop Profiling ---
-            if ENABLE_PROFILING and profiler:
-                profiler.disable()
-                print("\n--- Profiling Results ---")
-                # Sort by cumulative time spent in function and its sub-calls
-                stats = pstats.Stats(profiler).sort_stats('cumulative')
-                stats.print_stats(40) # Show the top 40 time-consuming functions
-                print("-------------------------\n")
-                # Optional: Save results to a file
-                # stats.dump_stats("simulation_profile.prof")
-                # print("Profiling results saved to simulation_profile.prof")
-            # ----------------------
+            # ... (Stop Profiling & Results) ...
 
         except Exception as e:
-            # Catch unexpected errors during the simulation run
-            print("\n--- CRITICAL UNHANDLED EXCEPTION DURING SIMULATION RUN ---")
-            traceback.print_exc()
-            print("----------------------------------------------------------")
-            print("Attempting to exit gracefully...")
-            try:
-                # Try to stop simulation and clean up
-                if simulation_instance:
-                     simulation_instance.app_running = False # Ensure loops exit
-                     simulation_instance._stop_streaming_server() # Try stopping thread
-                pygame.quit()
-            except Exception as cleanup_e:
-                 print(f"Error during cleanup after exception: {cleanup_e}")
+            # ... (Runtime Error Handling) ...
             input("Press Enter to Exit.")
 
     print("\nSimulation process finished.")
