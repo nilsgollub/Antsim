@@ -54,7 +54,7 @@ DEFAULT_WINDOW_WIDTH = 1280
 DEFAULT_WINDOW_HEIGHT = 720
 # Option 3: Use a percentage of the detected screen size (if not fullscreen)
 # Example: USE_SCREEN_PERCENT = 0.8 # Use 80% of the screen width/height
-USE_SCREEN_PERCENT = 0.5 # Set to a float between 0.1 and 1.0 or None
+USE_SCREEN_PERCENT = None#0.5 # Set to a float between 0.1 and 1.0 or None
 #USE_SCREEN_PERCENT = None
 
 # Base size for calculations (adjust for overall detail level)
@@ -102,7 +102,7 @@ FOOD_DOT_RADIUS = 1 # Pixel radius of food dots
 
 
 # Obstacles
-NUM_OBSTACLES = 4 #5
+NUM_OBSTACLES = 0 #5
 MIN_OBSTACLE_SIZE = 1 # In grid cells (Used by old rectangle method)
 MAX_OBSTACLE_SIZE = 5 # In grid cells (Used by old rectangle method)
 OBSTACLE_COLOR = (100, 100, 100) # <--- HIER IST DIE DEFINITION
@@ -125,7 +125,7 @@ RECRUITMENT_PHEROMONE_MAX = 500.0
 MIN_PHEROMONE_DRAW_THRESHOLD = 1.5  # Optimization: Don't draw tiny amounts
 
 # Weights (Influence on ant decision-making)
-W_HOME_PHEROMONE_RETURN = 45.0
+W_HOME_PHEROMONE_RETURN = 150
 W_FOOD_PHEROMONE_SEARCH_BASE = 50.0
 W_FOOD_PHEROMONE_SEARCH_LOW_NEED = 5.0
 W_FOOD_PHEROMONE_SEARCH_AVOID = -30.0
@@ -133,7 +133,7 @@ W_HOME_PHEROMONE_SEARCH = 0.0
 W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 100.0 # Starkes Gewicht, wenn EINE Ressource KRITISCH ist
 W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = 0.0 # Starke Vermeidung, wenn die andere Ressource KRITISCH ist
 W_ALARM_PHEROMONE = 0
-W_NEST_DIRECTION_RETURN = 100.0
+W_NEST_DIRECTION_RETURN = 70#70.0
 W_NEST_DIRECTION_PATROL = -10.0
 W_ALARM_SOURCE_DEFEND = 500.0 # Increased
 W_PERSISTENCE = 1.5
@@ -146,7 +146,7 @@ W_AVOID_HISTORY = -200.0  # Strong penalty for revisiting
 W_REPULSION = 20 # Repulsion from other ants
 
 # Probabilistic Choice Parameters
-PROBABILISTIC_CHOICE_TEMP = 1.0
+PROBABILISTIC_CHOICE_TEMP = 1
 MIN_SCORE_FOR_PROB_CHOICE = 0.01
 
 # Pheromone Drop Amounts
@@ -163,8 +163,8 @@ P_FOOD_SEARCHING = 0.0  # Placeholder/Not used directly
 P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
 # Ant Parameters
-INITIAL_ANTS = 10
-MAX_ANTS = 200
+INITIAL_ANTS = 1
+MAX_ANTS = 1
 QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
 WORKER_MAX_AGE_STDDEV = 2000
@@ -194,20 +194,20 @@ LARVA_FOOD_CONSUMPTION_SUGAR = 0.01
 LARVA_FEED_INTERVAL = 50 # Ticks
 
 # Enemy Parameters
-INITIAL_ENEMIES = 1
+INITIAL_ENEMIES = 0
 ENEMY_HP = 40
 ENEMY_ATTACK = 10
 ENEMY_MOVE_DELAY = 4 # Ticks
-ENEMY_SPAWN_RATE = 1000 # Ticks
+ENEMY_SPAWN_RATE = 99999#1000 # Ticks
 ENEMY_TO_FOOD_ON_DEATH_SUGAR = 10.0
 ENEMY_TO_FOOD_ON_DEATH_PROTEIN = 50.0
 ENEMY_NEST_ATTRACTION = 0.05 # Probability to move towards nest
 
 # Prey Parameters
-INITIAL_PREY = 5
+INITIAL_PREY = 0#5
 PREY_HP = 25
 PREY_MOVE_DELAY = 2 # Ticks
-PREY_SPAWN_RATE = 1000 # Ticks
+PREY_SPAWN_RATE = 99999#1000 # Ticks
 PROTEIN_ON_DEATH = 20.0
 PREY_FLEE_RADIUS_SQ = 5 * 5 # Grid cells squared
 
@@ -1503,13 +1503,22 @@ class Ant:
         return score
 
     def _score_moves_returning(self, valid_neighbors_int, just_picked):
-        """Scores moves for ants returning to the nest (carrying food or finished task)."""
+        """Scores moves for ants returning to the nest, logging decision factors."""
         scores = {}
         sim = self.simulation
         pos_int = self.pos
         nest_pos_int = sim.nest_pos
         grid = sim.grid
-        dist_sq_now = distance_sq(pos_int, nest_pos_int) # Current distance to nest
+        dist_sq_now = distance_sq(pos_int, nest_pos_int)  # Current distance to nest
+
+        log_entry = {  # Dictionary to store decision factors for logging
+            "ant_id": id(self),
+            "tick": sim.ticks,
+            "state": self.state.name,
+            "just_picked": just_picked,
+            "pos": pos_int,
+            "moves_considered": [],
+        }
 
         for n_pos_int in valid_neighbors_int:
             score = self._score_moves_base(n_pos_int)
@@ -1519,17 +1528,30 @@ class Ant:
             alarm_ph = grid.get_pheromone(n_pos_int, "alarm")
             neg_ph = grid.get_pheromone(n_pos_int, "negative")
 
-            score += home_ph * W_HOME_PHEROMONE_RETURN # Strong attraction to home trail
+            score += home_ph * W_HOME_PHEROMONE_RETURN  # Strong attraction to home trail
 
             # Directional bias towards nest
             if distance_sq(n_pos_int, nest_pos_int) < dist_sq_now:
-                score += W_NEST_DIRECTION_RETURN # Bonus for getting closer
+                score += W_NEST_DIRECTION_RETURN  # Bonus for getting closer
 
             # Avoidance (less strong than when searching)
-            score += alarm_ph * W_ALARM_PHEROMONE * 0.3 # Avoid danger slightly
-            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.4 # Avoid negative areas
+            score += alarm_ph * W_ALARM_PHEROMONE * 0.3  # Avoid danger slightly
+            score += neg_ph * W_NEGATIVE_PHEROMONE * 0.4  # Avoid negative areas
 
             scores[n_pos_int] = score
+            log_entry["moves_considered"].append(
+                {
+                    "pos": n_pos_int,
+                    "score": score,
+                    "home_ph": home_ph,
+                    "alarm_ph": alarm_ph,
+                    "neg_ph": neg_ph,
+                    "dist_to_nest": distance_sq(n_pos_int, nest_pos_int),
+                }
+            )
+
+        # Log the decision factors after evaluating all moves
+        sim.log_ant_decision(log_entry)  # Assuming a logging method exists in AntSimulation
         return scores
 
     def _score_moves_searching(self, valid_neighbors_int):
@@ -1828,7 +1850,7 @@ class Ant:
         return chosen_int
 
     def _select_best_move_returning(self, move_scores, valid_neighbors_int, just_picked):
-        """Selects the best move for returning, prioritizing getting closer."""
+        """Selects the best move for returning, prioritizing getting closer, with logging."""
         best_score = -float("inf")
         best_moves_int = []
         sim = self.simulation
@@ -1836,10 +1858,15 @@ class Ant:
         nest_pos_int = sim.nest_pos
         dist_sq_now = distance_sq(pos_int, nest_pos_int)
 
+        print(
+            f"\n_select_best_move_returning() called for ant {id(self)} at {pos_int}, state: {self.state}, just_picked: {just_picked}")
+        print(f"  Current distance to nest: {dist_sq_now}")
+
         # Separate moves into those getting closer and others
         closer_moves = {}
         other_moves = {}
         for pos_int_cand, score in move_scores.items():
+            print(f"    Move: {pos_int_cand}, Score: {score:.2f}")
             if distance_sq(pos_int_cand, nest_pos_int) < dist_sq_now:
                 closer_moves[pos_int_cand] = score
             else:
@@ -1851,19 +1878,19 @@ class Ant:
         if closer_moves:
             target_pool = closer_moves
             selection_type = "Closer"
-        elif other_moves: # If no closer moves, consider others
+        elif other_moves:  # If no closer moves, consider others
             target_pool = other_moves
             selection_type = "Other"
-        else: # Should not happen if move_scores is not empty, but fallback
+        else:  # Should not happen if move_scores is not empty, but fallback
             target_pool = move_scores
             selection_type = "All(Fallback)"
 
-        # If target pool is somehow empty, fallback
+        print(f"  Selection type: {selection_type}, Target pool size: {len(target_pool)}")
+
         if not target_pool:
             self.last_move_info += "(R: No moves?)"
             return random.choice(valid_neighbors_int) if valid_neighbors_int else None
 
-        # Find the best score within the chosen pool (closer or other)
         for pos_int_cand, score in target_pool.items():
             if score > best_score:
                 best_score = score
@@ -1871,42 +1898,37 @@ class Ant:
             elif score == best_score:
                 best_moves_int.append(pos_int_cand)
 
-        # If still no best move found (e.g., all scores were -inf in the pool)
         if not best_moves_int:
-             self.last_move_info += f"(R: No best in {selection_type})"
-             # Fallback: check the *original* full move_scores list if we filtered
-             if target_pool is not move_scores:
-                 best_score = -float('inf')
-                 best_moves_int = []
-                 for pos_int_cand, score in move_scores.items():
-                     if score > best_score:
-                          best_score = score
-                          best_moves_int = [pos_int_cand]
-                     elif score == best_score:
-                          best_moves_int.append(pos_int_cand)
+            self.last_move_info += f"(R: No best in {selection_type})"
+            if target_pool is not move_scores:
+                best_score = -float("inf")
+                best_moves_int = []
+                for pos_int_cand, score in move_scores.items():
+                    if score > best_score:
+                        best_score = score
+                        best_moves_int = [pos_int_cand]
+                    elif score == best_score:
+                        best_moves_int.append(pos_int_cand)
+            if not best_moves_int:
+                return random.choice(valid_neighbors_int) if valid_neighbors_int else None
 
-             # If *still* no best move, choose randomly from any valid neighbor
-             if not best_moves_int:
-                  return random.choice(valid_neighbors_int) if valid_neighbors_int else None
-
-        # --- Tie-breaking for Returning Ants ---
         chosen_int = None
         if len(best_moves_int) == 1:
-            # No tie, choose the single best move
             chosen_int = best_moves_int[0]
             self.last_move_info = f"R({selection_type})Best->{chosen_int} (S:{best_score:.1f})"
         else:
-            # Tie! Use home pheromone level as a tie-breaker
             grid = sim.grid
-            # Sort tied moves by home pheromone level (descending)
             best_moves_int.sort(key=lambda p: grid.get_pheromone(p, "home"), reverse=True)
-            # Find the maximum pheromone level among the tied best moves
             max_ph = grid.get_pheromone(best_moves_int[0], "home")
-            # Select randomly from all moves that have this maximum pheromone level
             top_ph_moves = [p for p in best_moves_int if grid.get_pheromone(p, "home") == max_ph]
             chosen_int = random.choice(top_ph_moves)
             self.last_move_info = f"R({selection_type})TieBrk->{chosen_int} (S:{best_score:.1f})"
 
+        print(f"  Chosen move: {chosen_int}, Best score: {best_score:.2f}")
+
+        # Log the final decision
+        sim.log_ant_decision(
+            {"ant_id": id(self), "tick": sim.ticks, "state": self.state.name, "chosen_move": chosen_int})
         return chosen_int
 
     def _select_probabilistic_move(self, move_scores, valid_neighbors_int):
@@ -4538,6 +4560,20 @@ class AntSimulation:
          # Remove expired indicators
          for index in sorted(indices_to_remove, reverse=True): # Remove from end first
               del self.recent_attacks[index]
+
+    def log_ant_decision(self, log_data):
+        """Processes and stores ant decision logging data."""
+        if self.log_filename:
+            try:
+                with open(self.log_filename, "a") as f:
+                    # Konvertiere das log_data Dictionary in eine CSV-Zeile
+                    csv_line = ",".join(map(str, log_data.values())) + "\n"
+                    f.write(csv_line)
+            except Exception as e:
+                print(f"Error writing ant decision log: {e}")
+        else:
+            # Optional: Store log data in a list if file logging is disabled
+            pass
 
     def run(self):
         """Main application loop: handles simulation runs and end dialog."""
