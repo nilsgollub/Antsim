@@ -78,13 +78,13 @@ NUM_FOOD_TYPES = 2 # len(FoodType) - Hardcoded for clarity below
 INITIAL_FOOD_CLUSTERS = 6
 FOOD_PER_CLUSTER = 250
 FOOD_CLUSTER_RADIUS = 5 # In grid cells
-MIN_FOOD_DIST_FROM_NEST = 30 # In grid cells (relative to nest center)
+MIN_FOOD_DIST_FROM_NEST = 10 # In grid cells (relative to nest center)
 MAX_FOOD_PER_CELL = 100.0
 INITIAL_COLONY_FOOD_SUGAR = 200.0
 INITIAL_COLONY_FOOD_PROTEIN = 200.0
 RICH_FOOD_THRESHOLD = 50.0
 CRITICAL_FOOD_THRESHOLD = 25.0
-FOOD_REPLENISH_RATE = 1200  # Intervall in Ticks
+FOOD_REPLENISH_RATE = 120000  # Intervall in Ticks
 # Food drawing change - adjust how many dots per unit of food
 FOOD_DOTS_PER_UNIT = 0.15 # Lower value = more dots per food unit. Adjust for density.
 FOOD_MAX_DOTS_PER_CELL = 25 # Limit dots per cell for performance/visuals
@@ -154,7 +154,7 @@ P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
 # Ant Parameters
 INITIAL_ANTS = 10
-MAX_ANTS = 50
+MAX_ANTS = 200
 QUEEN_HP = 1000
 WORKER_MAX_AGE_MEAN = 12000
 WORKER_MAX_AGE_STDDEV = 2000
@@ -451,7 +451,7 @@ class BroodItem:
         # Size relative to CELL_SIZE
         cell_size = self.simulation.cell_size
         if self.stage == BroodStage.EGG:
-            self.duration = EGG_DURATION; self.color = EGG_COLOR; self.radius = max(1, cell_size // 5)
+            self.duration = EGG_DURATION; self.color = EGG_COLOR; self.radius = max(1, cell_size // 8)
         elif self.stage == BroodStage.LARVA:
             self.duration = LARVA_DURATION; self.color = LARVA_COLOR; self.radius = max(1, cell_size // 4)
         elif self.stage == BroodStage.PUPA:
@@ -2443,27 +2443,48 @@ class Queen:
             return AntCaste.WORKER
 
     def _find_egg_position(self):
-        """Finds a suitable nearby valid cell to place a new egg."""
+        """Finds a suitable random cell within the nest radius to place a new egg."""
         sim = self.simulation
-        # Get neighbors around the queen
+        nest_center_int = sim.nest_pos # Use the central nest position
+        nest_radius_sq = NEST_RADIUS ** 2
+        max_attempts = 25 # Try a few times to find a spot
+
+        for _ in range(max_attempts):
+            # Generate a random offset within the square bounding the nest radius
+            offset_x = rnd(-NEST_RADIUS, NEST_RADIUS)
+            offset_y = rnd(-NEST_RADIUS, NEST_RADIUS)
+
+            # Calculate potential position
+            potential_pos = (nest_center_int[0] + offset_x, nest_center_int[1] + offset_y)
+
+            # Check if the potential position is valid and suitable
+            if (is_valid_pos(potential_pos, sim.grid_width, sim.grid_height) and
+                    distance_sq(potential_pos, nest_center_int) <= nest_radius_sq and # Check within circular radius
+                    not sim.grid.is_obstacle(potential_pos) and # Check not obstacle
+                    potential_pos != self.pos): # Check not queen's own position
+                # Found a suitable random spot within the nest area
+                return potential_pos
+
+        # Fallback: If no random spot found after attempts, try immediate neighbors (old logic)
+        # This prevents eggs from completely failing if the random area is somehow blocked
+        # Get neighbors around the queen's *current* position
         possible_spots = get_neighbors(self.pos, sim.grid_width, sim.grid_height)
-        # Filter out obstacles
-        valid_spots = [p for p in possible_spots if not sim.grid.is_obstacle(p)]
+        # Filter out obstacles and the queen's spot itself
+        valid_spots = [p for p in possible_spots if not sim.grid.is_obstacle(p) and p != self.pos]
 
-        if not valid_spots: return None  # No valid spots nearby
+        if valid_spots:
+            # Get positions currently occupied by other brood items
+            brood_positions = sim.get_brood_positions()
+            # Prefer spots that are valid and not occupied by other brood
+            free_valid_spots = [p for p in valid_spots if p not in brood_positions]
 
-        # Get positions currently occupied by other brood items
-        brood_positions = sim.get_brood_positions()
-        # Prefer spots that are valid and not occupied by other brood
-        free_valid_spots = [p for p in valid_spots if p not in brood_positions]
+            if free_valid_spots:
+                return random.choice(free_valid_spots) # Choose randomly from free neighbors
+            else:
+                return random.choice(valid_spots) # Fallback to any valid neighbor
 
-        if free_valid_spots:
-            # Choose randomly from free spots
-            return random.choice(free_valid_spots)
-        else:
-            # If all valid spots have brood, choose randomly from any valid spot
-            # (allows stacking, might need refinement later)
-            return random.choice(valid_spots)
+        # If even neighbors failed (very unlikely unless queen is trapped)
+        return None # Indicate no suitable position found
 
     def take_damage(self, amount, attacker):
         """Handles queen taking damage, signals high alarm."""
