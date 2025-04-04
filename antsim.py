@@ -69,7 +69,7 @@ CELL_SIZE = 12
 # ----------------------------------------------------------
 
 # --- Logging Configuration ---
-ENABLE_SIMULATION_LOGGING = True # Set to False to disable logging
+ENABLE_SIMULATION_LOGGING = False # Set to False to disable logging
 SIMULATION_LOG_FILE = "antsim_log.csv" # Log filename
 LOGGING_INTERVAL_TICKS = 100 # How often to write a log entry (in simulation ticks)
 LOG_HEADER = "Tick,Generation,Sugar,Protein,Ants,Workers,Soldiers,Eggs,Larvae,Pupae,Enemies,Prey\n" # CSV Header
@@ -1858,15 +1858,11 @@ class Ant:
         nest_pos_int = sim.nest_pos
         dist_sq_now = distance_sq(pos_int, nest_pos_int)
 
-        print(
-            f"\n_select_best_move_returning() called for ant {id(self)} at {pos_int}, state: {self.state}, just_picked: {just_picked}")
-        print(f"  Current distance to nest: {dist_sq_now}")
 
         # Separate moves into those getting closer and others
         closer_moves = {}
         other_moves = {}
         for pos_int_cand, score in move_scores.items():
-            print(f"    Move: {pos_int_cand}, Score: {score:.2f}")
             if distance_sq(pos_int_cand, nest_pos_int) < dist_sq_now:
                 closer_moves[pos_int_cand] = score
             else:
@@ -1885,7 +1881,6 @@ class Ant:
             target_pool = move_scores
             selection_type = "All(Fallback)"
 
-        print(f"  Selection type: {selection_type}, Target pool size: {len(target_pool)}")
 
         if not target_pool:
             self.last_move_info += "(R: No moves?)"
@@ -1924,7 +1919,7 @@ class Ant:
             chosen_int = random.choice(top_ph_moves)
             self.last_move_info = f"R({selection_type})TieBrk->{chosen_int} (S:{best_score:.1f})"
 
-        print(f"  Chosen move: {chosen_int}, Best score: {best_score:.2f}")
+
 
         # Log the final decision
         sim.log_ant_decision(
@@ -2777,28 +2772,28 @@ class AntSimulation:
     """Manages the overall simulation state, entities, drawing, and UI."""
 
     def __init__(self, log_filename=None): # <<< Parameter hinzugefügt
-        print("[Debug] AntSimulation.__init__ started.") # Debug Print
+        print("AntSimulation.__init__ started.") # Debug Print
         self.app_running = True
         self.simulation_running = False
         # --- <<< Logging-Attribute >>> ---
         self.log_filename = log_filename if ENABLE_SIMULATION_LOGGING else None
         self.logging_interval = LOGGING_INTERVAL_TICKS
-        print(f"[Debug]   Log filename set to: {self.log_filename}") # Debug Print
+        print(f"Log filename set to: {self.log_filename}") # Debug Print
 
         # --- Pygame and Display Initialization ---
-        print("[Debug]   Initializing Pygame...") # Debug Print
+        print("Initializing Pygame...") # Debug Print
         try:
             pygame.init()
             if not pygame.display.get_init():
                 raise RuntimeError("Display module failed")
             os.environ['SDL_VIDEO_CENTERED'] = '1'  # Center window
             pygame.display.set_caption("Ant Simulation - Responsive")
-            print("[Debug]   Pygame initialized.") # Debug Print
+            print("Pygame initialized.") # Debug Print
 
             # Determine Screen/Window Size
             screen_info = pygame.display.Info()
             monitor_width, monitor_height = screen_info.current_w, screen_info.current_h
-            print(f"[Debug]   Detected Monitor Size: {monitor_width}x{monitor_height}") # Debug Print
+            print(f"Detected Monitor Size: {monitor_width}x{monitor_height}") # Debug Print
 
             if USE_FULLSCREEN:
                 self.screen_width = monitor_width
@@ -2819,9 +2814,9 @@ class AntSimulation:
                 display_flags = pygame.DOUBLEBUF  # Use default flags for windowed
 
             # Set the display mode
-            print("[Debug]   Setting display mode...") # Debug Print
+            print("Setting display mode...") # Debug Print
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), display_flags)
-            print(f"[Debug]   Set Display Mode: {self.screen.get_width()}x{self.screen.get_height()}") # Debug Print
+            print(f"Set Display Mode: {self.screen.get_width()}x{self.screen.get_height()}") # Debug Print
 
         except Exception as e:
             print(f"[Debug]   FATAL: Pygame/Display init failed: {e}") # Debug Print
@@ -2831,7 +2826,7 @@ class AntSimulation:
             return  # Cannot continue
 
         # --- Calculate Grid Dimensions based on Screen ---
-        print("[Debug]   Calculating grid dimensions...") # Debug Print
+        print("Calculating grid dimensions...") # Debug Print
         self.cell_size = CELL_SIZE
         # Ensure grid dimensions are at least 1
         self.grid_width = max(1, self.screen.get_width() // self.cell_size)
@@ -2846,10 +2841,10 @@ class AntSimulation:
 
         # --- Calculate Nest Position (Center of Grid) ---
         self.nest_pos = (self.grid_width // 2, self.grid_height // 2)
-        print(f"[Debug]   Calculated Grid: {self.grid_width}x{self.grid_height}, Cell Size: {self.cell_size}, Nest: {self.nest_pos}") # Debug Print
+        print(f"Calculated Grid: {self.grid_width}x{self.grid_height}, Cell Size: {self.cell_size}, Nest: {self.nest_pos}") # Debug Print
 
         # --- Initialize Fonts (Scaled) ---
-        print("[Debug]   Initializing fonts...") # Debug Print
+        print("Initializing fonts...") # Debug Print
         self.font = None
         self.debug_font = None
         self.legend_font = None
@@ -2858,10 +2853,10 @@ class AntSimulation:
              print("[Debug]   Font initialization failed (detected after call).") # Debug Print
              print(f"[Debug] AntSimulation.__init__ aborted (Font Error). self.app_running = {self.app_running}") # Debug Print
              return # Font init might fail
-        print("[Debug]   Fonts initialized.") # Debug Print
+        print("Fonts initialized.") # Debug Print
 
         # --- Simulation State Variables ---
-        print("[Debug]   Initializing simulation state variables...") # Debug Print
+        print("Initializing simulation state variables...") # Debug Print
         self.clock = pygame.time.Clock()
         self.grid = WorldGrid(self.grid_width, self.grid_height)
         self.end_game_reason = ""
@@ -2898,44 +2893,44 @@ class AntSimulation:
         self.prey_spawn_interval_ticks = PREY_SPAWN_RATE
         self.food_replenish_timer = 0.0
         self.food_replenish_interval_ticks = FOOD_REPLENISH_RATE
-        print("[Debug]   Simulation state variables initialized.") # Debug Print
+        print("Simulation state variables initialized.") # Debug Print
 
         # UI State
-        print("[Debug]   Initializing UI state...") # Debug Print
+        print("Initializing UI state...") # Debug Print
         self.show_debug_info = True
         self.show_legend = False
         self.show_pheromones = False # Standardmäßig AUS
         self.simulation_speed_index = DEFAULT_SPEED_INDEX
         self.current_target_fps = TARGET_FPS_LIST[self.simulation_speed_index]
         self.buttons = self._create_buttons()
-        print("[Debug]   UI state initialized.") # Debug Print
+        print("UI state initialized.") # Debug Print
 
         # Drawing Surfaces
-        print("[Debug]   Initializing drawing surfaces...") # Debug Print
+        print("Initializing drawing surfaces...") # Debug Print
         self.static_background_surface = pygame.Surface((self.width, self.height))
         self.latest_frame_surface = None
         self.food_dot_rng = random.Random()
         self.pheromone_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         self.pheromone_surface.fill((0, 0, 0, 0))
         self.last_pheromone_update_tick = -100
-        print("[Debug]   Drawing surfaces initialized.") # Debug Print
+        print("Drawing surfaces initialized.") # Debug Print
 
-        print("[Debug]   Preparing static background...") # Debug Print
+        print("Preparing static background...") # Debug Print
         self._prepare_static_background()
-        print("[Debug]   Static background prepared.") # Debug Print
+        print("Static background prepared.") # Debug Print
 
         # --- Spatial Grid ---
-        print("[Debug]   Initializing spatial grid...") # Debug Print
+        print("Initializing spatial grid...") # Debug Print
         self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)
-        print("[Debug]   Spatial grid initialized.") # Debug Print
+        print("Spatial grid initialized.") # Debug Print
 
         # --- Start Optional Network Stream ---
-        print("[Debug]   Starting streaming server (if enabled)...") # Debug Print
+        print("Starting streaming server (if enabled)...") # Debug Print
         self._start_streaming_server_if_enabled()
-        print("[Debug]   Streaming server handled.") # Debug Print
+        print("Streaming server handled.") # Debug Print
 
         # --- Initial Simulation Reset ---
-        print("[Debug]   Performing initial simulation reset...") # Debug Print
+        print("Performing initial simulation reset...") # Debug Print
         if self.app_running:
             self._reset_simulation()
             # _reset_simulation sets self.simulation_running = True if successful
@@ -2948,7 +2943,7 @@ class AntSimulation:
             # This case happens if Pygame/Font init failed earlier
             print("[Debug]   Skipping simulation reset because app_running was already False.") # Debug Print
 
-        print(f"[Debug] AntSimulation.__init__ finished. self.app_running = {self.app_running}") # Debug Print
+        print(f"AntSimulation.__init__ finished. self.app_running = {self.app_running}") # Debug Print
 
     def _init_fonts(self):
         """Initializes fonts, scaling them based on screen height."""
