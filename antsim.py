@@ -133,7 +133,7 @@ W_HOME_PHEROMONE_SEARCH = 0.0
 W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 100.0 # Starkes Gewicht, wenn EINE Ressource KRITISCH ist
 W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = 0.0 # Starke Vermeidung, wenn die andere Ressource KRITISCH ist
 W_ALARM_PHEROMONE = -10
-W_NEST_DIRECTION_RETURN = 800#70.0
+W_NEST_DIRECTION_RETURN = 250#70.0
 W_NEST_DIRECTION_PATROL = -10.0
 W_ALARM_SOURCE_DEFEND = 500.0 # Increased
 W_PERSISTENCE = 0.5
@@ -156,8 +156,8 @@ P_FOOD_AT_SOURCE = 500.0
 P_ALARM_FIGHT = 200.0 # Increased
 P_NEGATIVE_SEARCH = 10.0
 P_RECRUIT_FOOD = 400.0
-P_RECRUIT_DAMAGE = 350.0 # Increased
-P_RECRUIT_DAMAGE_SOLDIER = 500.0 # Increased
+P_RECRUIT_DAMAGE = 200.0 # Increased
+P_RECRUIT_DAMAGE_SOLDIER = 200.0 # Increased
 P_RECRUIT_PREY = 300.0
 P_FOOD_SEARCHING = 0.0  # Placeholder/Not used directly
 P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
@@ -195,12 +195,12 @@ LARVA_FEED_INTERVAL = 50 # Ticks
 
 # Enemy Parameters
 INITIAL_ENEMIES = 1
-ENEMY_HP = 40
+ENEMY_HP = 60
 ENEMY_ATTACK = 10
 ENEMY_MOVE_DELAY = 4 # Ticks
 ENEMY_SPAWN_RATE = 1000 # Ticks
 ENEMY_TO_FOOD_ON_DEATH_SUGAR = 10.0
-ENEMY_TO_FOOD_ON_DEATH_PROTEIN = 50.0
+ENEMY_TO_FOOD_ON_DEATH_PROTEIN = 20.0
 ENEMY_NEST_ATTRACTION = 0.05 # Probability to move towards nest
 
 # Prey Parameters
@@ -220,7 +220,7 @@ TARGET_FPS_LIST = [10] + [
 DEFAULT_SPEED_INDEX = SPEED_MULTIPLIERS.index(1.0)
 
 # --- NEW: Network Streaming ---
-ENABLE_NETWORK_STREAM = False  # Set to True to enable web streaming
+ENABLE_NETWORK_STREAM = True  # Set to True to enable web streaming
 STREAMING_HOST = "0.0.0.0"  # Host for the streaming server (0.0.0.0 for external access)
 STREAMING_PORT = 5000       # Port for the streaming server
 STREAM_FRAME_QUALITY = 75   # JPEG quality for streaming (0-100)
@@ -347,8 +347,8 @@ HTML_TEMPLATE = """
   <head>
     <title>Ant Simulation Stream</title>
     <style>
-      body {{ background-color: #333; margin: 0; padding: 0; }}
-      img {{ display: block; margin: auto; padding-top: 20px; }}
+      body { background-color: #333; margin: 0; padding: 0; }
+      img { display: block; margin: auto; padding-top: 20px; }
     </style>
   </head>
   <body>
