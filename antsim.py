@@ -146,19 +146,19 @@ W_AVOID_HISTORY = -200.0  # Strong penalty for revisiting
 W_REPULSION = 20 # Repulsion from other ants
 
 # Probabilistic Choice Parameters
-PROBABILISTIC_CHOICE_TEMP = 1
+PROBABILISTIC_CHOICE_TEMP = 0.5
 MIN_SCORE_FOR_PROB_CHOICE = 0.01
 
 # Pheromone Drop Amounts
 P_HOME_RETURNING = 50.0
 P_FOOD_RETURNING_TRAIL = 120.0
 P_FOOD_AT_SOURCE = 500.0
-P_ALARM_FIGHT = 200.0 # Increased
+P_ALARM_FIGHT = 0.0 # Increased
 P_NEGATIVE_SEARCH = 10.0
 P_RECRUIT_FOOD = 400.0
-P_RECRUIT_DAMAGE = 200.0 # Increased
-P_RECRUIT_DAMAGE_SOLDIER = 200.0 # Increased
-P_RECRUIT_PREY = 300.0
+P_RECRUIT_DAMAGE = 0.0 # Increased
+P_RECRUIT_DAMAGE_SOLDIER = 0.0 # Increased
+P_RECRUIT_PREY = 0.0
 P_FOOD_SEARCHING = 0.0  # Placeholder/Not used directly
 P_FOOD_AT_NEST = 0.0  # Placeholder/Not used directly
 
