@@ -220,7 +220,7 @@ TARGET_FPS_LIST = [10] + [
 DEFAULT_SPEED_INDEX = SPEED_MULTIPLIERS.index(1.0)
 
 # --- NEW: Network Streaming ---
-ENABLE_NETWORK_STREAM = True  # Set to True to enable web streaming
+ENABLE_NETWORK_STREAM = False  # Set to True to enable web streaming
 STREAMING_HOST = "0.0.0.0"  # Host for the streaming server (0.0.0.0 for external access)
 STREAMING_PORT = 5000       # Port for the streaming server
 STREAM_FRAME_QUALITY = 75   # JPEG quality for streaming (0-100)
