@@ -109,7 +109,7 @@ FOOD_PER_CLUSTER = 250
 # Radius (in grid cells) around which food items in a cluster are spread
 FOOD_CLUSTER_RADIUS = 5
 # Minimum distance (in grid cells) initial food clusters must be from the nest center
-MIN_FOOD_DIST_FROM_NEST = 30
+MIN_FOOD_DIST_FROM_NEST = 20
 # Maximum amount of food units allowed in a single grid cell
 MAX_FOOD_PER_CELL = 100.0
 # Initial amount of sugar stored in the colony's reserves
@@ -189,7 +189,7 @@ W_HOME_PHEROMONE_RETURN = 45.0        # Attraction to home pheromone when return
 W_NEST_DIRECTION_RETURN = 250.0       # Strong bias towards moving closer to the nest coordinates when returning
 # --- Searching State ---
 # Base attraction to food pheromones when searching (colony needs are moderate)
-W_FOOD_PHEROMONE_SEARCH_BASE = 40.0
+W_FOOD_PHEROMONE_SEARCH_BASE = 150.0
 # Attraction to food pheromones when the specific food type is NOT critically needed
 W_FOOD_PHEROMONE_SEARCH_LOW_NEED = 5.0
 # Repulsion from food pheromones of the OPPOSITE type when the colony critically needs the OTHER type
@@ -197,7 +197,7 @@ W_FOOD_PHEROMONE_SEARCH_AVOID = -10.0
 # Attraction to home pheromones when searching (typically low or zero, ants explore outwards)
 W_HOME_PHEROMONE_SEARCH = 0.0
 # VERY strong attraction to a food pheromone type if that type is CRITICALLY low in the colony
-W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 100.0
+W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 200.0
 # Repulsion/avoidance factor for a food pheromone type if the OTHER type is critically needed
 # (Set to 0.0 to just ignore the non-needed type, negative to actively avoid)
 W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = 0.0
@@ -222,7 +222,7 @@ W_HUNTING_TARGET = 250.0
 # Bonus for continuing in the same direction as the last move (inertia)
 W_PERSISTENCE = 0.5
 # Random noise added to move scores to break ties and add variability
-W_RANDOM_NOISE = 0.2
+W_RANDOM_NOISE = 1.5
 # Penalty for moving to a cell recently visited (part of path history)
 W_AVOID_HISTORY = -200.0
 # Penalty applied to moves towards cells occupied by other ants (simple repulsion)
@@ -232,7 +232,7 @@ W_REPULSION = 20.0  # Seems low, maybe increase? But blocking exists.
 # --- Probabilistic Choice Parameters ---
 # Temperature parameter for probabilistic move selection (SEARCHING, PATROLLING states).
 # Higher temp -> more randomness/exploration. Lower temp -> more greedy choice (highest score).
-PROBABILISTIC_CHOICE_TEMP = 0.5
+PROBABILISTIC_CHOICE_TEMP = 0.2
 # Minimum score required for a move to be considered in probabilistic selection
 # (prevents tiny negative scores dominating if all scores are negative).
 MIN_SCORE_FOR_PROB_CHOICE = 0.01
@@ -3433,7 +3433,7 @@ class Ant:
                 # <<< ÄNDERUNG: Größerer Radius für Pheromon-Stopp >>>
                 # Stoppe das Ablegen von Trail-Pheromonen schon etwas *weiter* vom Nest entfernt.
                 # Erhöhe den Radius von (NEST_RADIUS - 1)**2 auf z.B. (NEST_RADIUS + 2)**2
-                stop_pheromone_radius_sq = (NEST_RADIUS + 2) ** 2  # Neuer, größerer Radius
+                stop_pheromone_radius_sq = (NEST_RADIUS) ** 2  # Neuer, größerer Radius
                 # <<< ENDE ÄNDERUNG >>>
 
                 if is_valid_pos(old_pos_int, sim.grid_width, sim.grid_height) and \
