@@ -109,7 +109,7 @@ FOOD_PER_CLUSTER = 250
 # Radius (in grid cells) around which food items in a cluster are spread
 FOOD_CLUSTER_RADIUS = 5
 # Minimum distance (in grid cells) initial food clusters must be from the nest center
-MIN_FOOD_DIST_FROM_NEST = 20
+MIN_FOOD_DIST_FROM_NEST = 30
 # Maximum amount of food units allowed in a single grid cell
 MAX_FOOD_PER_CELL = 100.0
 # Initial amount of sugar stored in the colony's reserves
@@ -170,17 +170,17 @@ RECRUITMENT_PHEROMONE_DIFFUSION_SIGMA = 0.32  # << RENAMED/CLARIFIED
 # Maximum strength value specifically for recruitment pheromones
 RECRUITMENT_PHEROMONE_MAX = 500.0
 # Minimum pheromone strength required to be drawn (performance optimization)
-MIN_PHEROMONE_DRAW_THRESHOLD = 0.5
+MIN_PHEROMONE_DRAW_THRESHOLD = 0.2
 # --- Pheromone Drop Amounts (Strength added when dropped) ---
 P_HOME_RETURNING = 20.0           # Dropped by ants returning to nest (trail home)
 P_FOOD_RETURNING_TRAIL = 50.0    # Food pheromone dropped by ants returning with food
 P_FOOD_AT_SOURCE = 500.0          # Food pheromone dropped directly at food source upon pickup
-P_ALARM_FIGHT = 200.0             # Alarm pheromone dropped during combat (by ants or enemies being hit) << INCREASED
+P_ALARM_FIGHT = 50.0             # Alarm pheromone dropped during combat (by ants or enemies being hit) << INCREASED
 P_NEGATIVE_SEARCH = 10.0          # Negative pheromone dropped when searching empty areas
 P_RECRUIT_FOOD = 400.0            # Recruitment pheromone dropped at rich food sources
-P_RECRUIT_DAMAGE = 250.0          # Recruitment pheromone dropped when an ant/queen is damaged << INCREASED
-P_RECRUIT_DAMAGE_SOLDIER = 350.0  # Stronger recruitment signal if a soldier is damaged << INCREASED
-P_RECRUIT_PREY = 150.0            # Recruitment pheromone dropped when prey is killed << INCREASED
+P_RECRUIT_DAMAGE = 50.0          # Recruitment pheromone dropped when an ant/queen is damaged << INCREASED
+P_RECRUIT_DAMAGE_SOLDIER = 50.0  # Stronger recruitment signal if a soldier is damaged << INCREASED
+P_RECRUIT_PREY = 0.0            # Recruitment pheromone dropped when prey is killed << INCREASED
 # --- Pheromone Influence Weights (How strongly ants react to pheromones) ---
 # These weights are multiplied by the pheromone strength found in neighboring cells
 # during the ant's decision-making process (_score_moves_* methods).
@@ -197,7 +197,7 @@ W_FOOD_PHEROMONE_SEARCH_AVOID = -10.0
 # Attraction to home pheromones when searching (typically low or zero, ants explore outwards)
 W_HOME_PHEROMONE_SEARCH = 0.0
 # VERY strong attraction to a food pheromone type if that type is CRITICALLY low in the colony
-W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 200.0
+W_FOOD_PHEROMONE_SEARCH_CRITICAL_NEED = 100.0
 # Repulsion/avoidance factor for a food pheromone type if the OTHER type is critically needed
 # (Set to 0.0 to just ignore the non-needed type, negative to actively avoid)
 W_FOOD_PHEROMONE_SEARCH_CRITICAL_AVOID = 0.0
