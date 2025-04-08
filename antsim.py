@@ -70,7 +70,7 @@ DEFAULT_WINDOW_HEIGHT = 720
 USE_SCREEN_PERCENT = None
 
 # Base size for grid cells. Affects visual detail and simulation scale.
-CELL_SIZE = 16
+CELL_SIZE = 24
 
 # Simulation speed control: Target Frames Per Second
 # The simulation logic advances one step (tick) per frame update.
@@ -158,7 +158,7 @@ PHEROMONE_MAX = 1000.0
 PHEROMONE_DECAY = 0.9995
 # Diffusion rate controls how much pheromone spreads to neighbors each tick (using Gaussian filter sigma)
 # Higher values cause faster spreading and dilution. Needs careful tuning with decay.
-PHEROMONE_DIFFUSION_SIGMA = 0.32  # Sigma for Gaussian filter diffusion << RENAMED/CLARIFIED
+PHEROMONE_DIFFUSION_SIGMA = 0.2#0.32  # Sigma for Gaussian filter diffusion << RENAMED/CLARIFIED
 # Decay factor for negative pheromones (can decay faster/slower than others)
 NEGATIVE_PHEROMONE_DECAY = 0.995
 # Diffusion rate (sigma) for negative pheromones
@@ -172,8 +172,8 @@ RECRUITMENT_PHEROMONE_MAX = 500.0
 # Minimum pheromone strength required to be drawn (performance optimization)
 MIN_PHEROMONE_DRAW_THRESHOLD = 0.5
 # --- Pheromone Drop Amounts (Strength added when dropped) ---
-P_HOME_RETURNING = 50.0           # Dropped by ants returning to nest (trail home)
-P_FOOD_RETURNING_TRAIL = 120.0    # Food pheromone dropped by ants returning with food
+P_HOME_RETURNING = 20.0           # Dropped by ants returning to nest (trail home)
+P_FOOD_RETURNING_TRAIL = 50.0    # Food pheromone dropped by ants returning with food
 P_FOOD_AT_SOURCE = 500.0          # Food pheromone dropped directly at food source upon pickup
 P_ALARM_FIGHT = 200.0             # Alarm pheromone dropped during combat (by ants or enemies being hit) << INCREASED
 P_NEGATIVE_SEARCH = 10.0          # Negative pheromone dropped when searching empty areas
@@ -2967,8 +2967,7 @@ class Ant:
 
         Prioritizes moves that reduce the distance to the nest. Among moves
         that get closer, or among other moves if none get closer, it selects
-        the one with the highest score. Ties in score are broken using home
-        pheromone levels.
+        the one with the highest score. Ties in score are now broken RANDOMLY.
 
         Args:
             move_scores: Dictionary mapping valid neighbor tuples (x, y) to scores.
@@ -2977,7 +2976,7 @@ class Ant:
         Returns:
             The chosen (x, y) grid coordinate tuple, or None if no valid choice.
         """
-        # Handle edge cases where no valid moves or scores are available
+        # (Input validation remains the same)
         if not valid_neighbors_int:
             self.last_move_info += "(R: NoValidNeigh!)"
             return None
@@ -2990,40 +2989,34 @@ class Ant:
         nest_pos_int = sim.nest_pos
         dist_sq_now = distance_sq(current_pos_int, nest_pos_int)
 
-        # Separate moves into those getting closer to the nest and others
+        # (Separation into closer_moves_scores and other_moves_scores remains the same)
         closer_moves_scores = {}
         other_moves_scores = {}
         for pos_int_cand, score in move_scores.items():
-            # Ensure score is valid before proceeding
             if not isinstance(score, (int, float)) or not math.isfinite(score):
                 continue # Skip invalid scores
-
             if distance_sq(pos_int_cand, nest_pos_int) < dist_sq_now:
                 closer_moves_scores[pos_int_cand] = score
             else:
                 other_moves_scores[pos_int_cand] = score
 
-        # Determine the pool of moves to select from: prioritize closer moves
+        # (Determining target_pool_scores remains the same)
         target_pool_scores = {}
-        selection_type = "" # For debug info
+        selection_type = ""
         if closer_moves_scores:
             target_pool_scores = closer_moves_scores
             selection_type = "Closer"
         elif other_moves_scores:
-            # Only consider other moves if no moves get closer
             target_pool_scores = other_moves_scores
             selection_type = "Other"
         else:
-            # Fallback if separation failed or only invalid scores existed
-            # Use all original valid moves with their scores
             target_pool_scores = {k: v for k, v in move_scores.items() if math.isfinite(v)}
             selection_type = "All(Fallback)"
-            # If still no valid scores in fallback, choose randomly
             if not target_pool_scores:
                  self.last_move_info += "(R: No Scorable Moves!)"
                  return random.choice(valid_neighbors_int)
 
-        # Find the best score within the chosen pool
+        # (Finding best_score remains the same)
         best_score = -float("inf")
         best_scoring_moves = []
         for pos_int_cand, score in target_pool_scores.items():
@@ -3033,39 +3026,19 @@ class Ant:
             elif score == best_score:
                 best_scoring_moves.append(pos_int_cand)
 
-        # If no moves found with the best score (shouldn't happen if pool not empty)
         if not best_scoring_moves:
             self.last_move_info += f"(R: NoBestInPool {selection_type})"
-             # Final fallback: random choice from the original valid list
             return random.choice(valid_neighbors_int)
 
-        # --- Tie-breaking using Home Pheromones ---
-        chosen_int = None
+        # --- KORREKTUR: Tie-breaking - Wähle zufällig bei Gleichstand ---
+        chosen_int = random.choice(best_scoring_moves)
+
         if len(best_scoring_moves) == 1:
-            # Only one move has the best score, choose it directly
-            chosen_int = best_scoring_moves[0]
             self.last_move_info = f"R({selection_type})Best->{chosen_int} (S:{best_score:.1f})"
         else:
-            # Multiple moves tied for the best score, use pheromones to break the tie
-            grid = sim.grid
-            best_pheromone_moves = []
-            max_pheromone = -1.0 # Pheromones are non-negative
-
-            # Find the max home pheromone level among the tied moves
-            for pos_int_cand in best_scoring_moves:
-                ph_home = grid.get_pheromone(pos_int_cand, "home")
-                if ph_home > max_pheromone:
-                    max_pheromone = ph_home
-                    best_pheromone_moves = [pos_int_cand] # New best pheromone level
-                elif ph_home == max_pheromone:
-                    best_pheromone_moves.append(pos_int_cand) # Tied pheromone level
-
-            # Choose randomly among the moves with the best score AND best pheromone level
-            chosen_int = random.choice(best_pheromone_moves)
-            self.last_move_info = f"R({selection_type})TieBrk->{chosen_int} (S:{best_score:.1f} Ph:{max_pheromone:.0f})"
-
-        # Note: Original logging via sim.log_ant_decision is removed for simplicity.
-        # Debugging info is now primarily stored in self.last_move_info.
+            # Wenn es mehrere beste Züge gab, logge, dass ein zufälliger gewählt wurde.
+            self.last_move_info = f"R({selection_type})RandTie->{chosen_int} (S:{best_score:.1f})"
+        # --- ENDE KORREKTUR ---
 
         return chosen_int
 
