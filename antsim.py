@@ -158,7 +158,7 @@ PHEROMONE_MAX = 1000.0
 PHEROMONE_DECAY = 0.9995
 # Diffusion rate controls how much pheromone spreads to neighbors each tick (using Gaussian filter sigma)
 # Higher values cause faster spreading and dilution. Needs careful tuning with decay.
-PHEROMONE_DIFFUSION_SIGMA = 0.2#0.32  # Sigma for Gaussian filter diffusion << RENAMED/CLARIFIED
+PHEROMONE_DIFFUSION_SIGMA = 0.25#0.32  # Sigma for Gaussian filter diffusion << RENAMED/CLARIFIED
 # Decay factor for negative pheromones (can decay faster/slower than others)
 NEGATIVE_PHEROMONE_DECAY = 0.995
 # Diffusion rate (sigma) for negative pheromones
@@ -214,10 +214,10 @@ W_AVOID_NEST_SEARCHING = -400.0
 W_NEST_DIRECTION_PATROL = -10.0
 # --- Defending State ---
 # Strong attraction to the estimated source of alarm/recruitment signals
-W_ALARM_SOURCE_DEFEND = 500.0
+W_ALARM_SOURCE_DEFEND = 250.0
 # --- Hunting State ---
 # Strong attraction towards the targeted prey's location
-W_HUNTING_TARGET = 350.0
+W_HUNTING_TARGET = 250.0
 # --- General Movement Modifiers ---
 # Bonus for continuing in the same direction as the last move (inertia)
 W_PERSISTENCE = 0.5
@@ -299,7 +299,7 @@ ENEMY_ATTACK = 10
 # Delay (in ticks) between enemy moves
 ENEMY_MOVE_DELAY = 4
 # Interval (in ticks) at which new enemies are potentially spawned
-ENEMY_SPAWN_RATE = 1000
+ENEMY_SPAWN_RATE = 2000
 # Amount of sugar added to the grid cell when an enemy dies
 ENEMY_TO_FOOD_ON_DEATH_SUGAR = 10.0
 # Amount of protein added to the grid cell when an enemy dies
@@ -315,7 +315,7 @@ PREY_HP = 25
 # Delay (in ticks) between prey moves
 PREY_MOVE_DELAY = 2
 # Interval (in ticks) at which new prey are potentially spawned
-PREY_SPAWN_RATE = 1000
+PREY_SPAWN_RATE = 2000
 # Amount of protein added to the grid cell when prey dies
 PROTEIN_ON_DEATH = 20.0
 # Squared radius (in grid cells) within which prey will detect and flee from ants
