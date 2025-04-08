@@ -2712,7 +2712,7 @@ class Ant:
         # Periodically re-scan the vicinity for the strongest threat signal,
         # or if the current target is lost (set to None).
         # The probability (e.g., 0.2) introduces stochasticity in target re-evaluation.
-        if self.last_known_alarm_pos is None or random.random() < 0.2:
+        if self.last_known_alarm_pos is None or random.random() < 0.5:
             best_signal_pos = None
             max_signal_strength = -1.0
             # Scan a radius around the ant for signals
@@ -2745,7 +2745,7 @@ class Ant:
 
             # Update the ant's target if a sufficiently strong signal was found
             # A threshold prevents chasing faint, residual signals.
-            signal_threshold = 80.0
+            signal_threshold = 120.0
             if max_signal_strength > signal_threshold:
                 self.last_known_alarm_pos = best_signal_pos
             else:
