@@ -103,9 +103,9 @@ NEST_RADIUS = 3
 # Number of distinct food types (used for array dimensions)
 NUM_FOOD_TYPES = 2  # Corresponds to FoodType Enum (SUGAR, PROTEIN)
 # Number of initial food clusters placed at the start of a simulation run
-INITIAL_FOOD_CLUSTERS = 2
+INITIAL_FOOD_CLUSTERS = 4
 # Approximate total amount of food units per initial cluster
-FOOD_PER_CLUSTER = 250
+FOOD_PER_CLUSTER = 125
 # Radius (in grid cells) around which food items in a cluster are spread
 FOOD_CLUSTER_RADIUS = 5
 # Minimum distance (in grid cells) initial food clusters must be from the nest center
@@ -130,7 +130,7 @@ FOOD_DOTS_PER_UNIT = 0.15
 # Maximum number of dots drawn per cell, regardless of food amount (performance/visual limit)
 FOOD_MAX_DOTS_PER_CELL = 25
 # Pixel radius of individual food dots
-FOOD_DOT_RADIUS = 1
+FOOD_DOT_RADIUS = 3
 
 # --- Obstacle Parameters ---
 # Number of obstacle 'areas' to generate on the map
