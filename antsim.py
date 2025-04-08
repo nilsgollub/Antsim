@@ -2745,7 +2745,7 @@ class Ant:
 
             # Update the ant's target if a sufficiently strong signal was found
             # A threshold prevents chasing faint, residual signals.
-            signal_threshold = 120.0
+            signal_threshold = 250.0
             if max_signal_strength > signal_threshold:
                 self.last_known_alarm_pos = best_signal_pos
             else:
