@@ -123,7 +123,7 @@ RICH_FOOD_THRESHOLD = 50.0
 CRITICAL_FOOD_THRESHOLD = 200.0
 # Interval (in simulation ticks) at which new food clusters are potentially added
 # (adjusted dynamically based on map size in __init__)
-FOOD_REPLENISH_RATE = 20000
+FOOD_REPLENISH_RATE = 15000
 # --- Food Drawing Parameters ---
 # Controls the density of dots used to visualize food. Lower value = more dots per unit.
 FOOD_DOTS_PER_UNIT = 0.15
