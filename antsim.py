@@ -70,7 +70,7 @@ DEFAULT_WINDOW_HEIGHT = 720
 USE_SCREEN_PERCENT = None
 
 # Base size for grid cells. Affects visual detail and simulation scale.
-CELL_SIZE = 24
+CELL_SIZE = 16
 
 # Simulation speed control: Target Frames Per Second
 # The simulation logic advances one step (tick) per frame update.
@@ -427,7 +427,7 @@ ANT_ATTRIBUTES = {
 
 # Ant Colors based on State/Action
 ANT_BASE_COLOR = (200, 200, 200)         # Medium gray (currently less used, caste colors preferred)
-QUEEN_COLOR = (0, 0, 255)               # Blue
+QUEEN_COLOR = (200, 200, 255)               # Blue
 WORKER_ESCAPE_COLOR = (255, 255, 0)     # Yellow (when in ESCAPING state)
 ANT_DEFEND_COLOR = (255, 0, 0)          # Red (when in DEFENDING state)
 ANT_HUNT_COLOR = (0, 255, 255)          # Cyan (when in HUNTING state)
@@ -1931,113 +1931,83 @@ class Ant:
         # --- Simulation Integration ---
         self.index = -1 # Assigned by simulation.add_ant
 
-    def draw(self, surface: pygame.Surface):
-        """
-        Draws the ant onto the specified Pygame surface.
-
-        Orients the ant based on its `last_move_direction`. The colors used
-        for body parts depend on the ant's current state (searching vs. returning).
-
-        Args:
-            surface: The Pygame surface to draw on.
-        """
+    def draw(self, surface):
+        """Draws the ant onto the given surface."""
         sim = self.simulation
         cs = sim.cell_size
-        # Calculate the center pixel position of the ant's grid cell
+        # Calculate center pixel position
         pos_px = (int(self.pos[0] * cs + cs / 2),
                   int(self.pos[1] * cs + cs / 2))
 
-        # --- Determine Drawing Colors based on State ---
-        # Use return_color for the abdomen (gaster) if returning, otherwise search_color.
-        # Use search_color for the thorax (middle section).
-        # Use a darker version of search_color for the head.
-        # This provides a visual cue for the ant's primary goal.
-        abdomen_color = self.return_color if self.state == AntState.RETURNING_TO_NEST else self.search_color
-        thorax_color = self.search_color
-        # Darken the search color for the head
-        head_color = tuple(max(0, c - 40) for c in self.search_color[:3])
-        antenna_color = head_color # Use head color for antennae
-
         # --- Calculate Body Part Sizes ---
-        # Overall size reference, scales with cell size and ant's size_factor
+        # Overall size of the ant (adjust as needed)
         ant_size = max(2, int(cs / self.size_factor))
-        # Calculate sizes relative to the overall ant size
-        head_size = max(1, int(ant_size * self.head_size_factor))
-        thorax_size = max(1, int(ant_size * 0.2)) # Thorax is small
-        abdomen_size = max(1, int(ant_size * 0.6)) # Abdomen is largest part
+        # Calculate sizes of body parts relative to ant_size
+        head_size = int(ant_size * self.head_size_factor)  # Changed: Use head_size_factor
+        thorax_size = int(ant_size * 0.2)
+        abdomen_size = int(ant_size * 0.6)
 
-        # --- Calculate Orientation based on Movement ---
+        # --- Calculate Body Part Positions ---
+        # Use last_move_direction to orient the ant
         move_dir_x, move_dir_y = self.last_move_direction
-        # Normalize the direction vector (if the ant moved)
+        # Normalize direction vector (if moving)
         move_dir_len = (move_dir_x ** 2 + move_dir_y ** 2) ** 0.5
         if move_dir_len > 0:
-            # Avoid division by zero if length is positive
-            norm_dx = move_dir_x / move_dir_len
-            norm_dy = move_dir_y / move_dir_len
-        else:
-            # If no movement, default orientation (e.g., facing down)
-            norm_dx = 0
-            norm_dy = 1 # Default direction if not moving
+            move_dir_x /= move_dir_len
+            move_dir_y /= move_dir_len
 
-        # --- Calculate Body Part Positions relative to center and orientation ---
-        # Offsets determine how far parts are from the center pixel `pos_px`
-        head_offset_dist = thorax_size * 0.5 + head_size * 0.4 # Place head in front of thorax
-        abdomen_offset_dist = thorax_size * 0.5 + abdomen_size * 0.4 # Place abdomen behind thorax
-
-        # Head position
-        head_center_x = pos_px[0] + int(norm_dx * head_offset_dist)
-        head_center_y = pos_px[1] + int(norm_dy * head_offset_dist)
-        head_center = (head_center_x, head_center_y)
-
-        # Abdomen position
-        abdomen_center_x = pos_px[0] - int(norm_dx * abdomen_offset_dist)
-        abdomen_center_y = pos_px[1] - int(norm_dy * abdomen_offset_dist)
-        abdomen_center = (abdomen_center_x, abdomen_center_y)
-
-        # Thorax position remains at the center `pos_px`
-
-        # --- Draw Body Parts (Ellipses) ---
-        # Draw Abdomen (Gaster) - typically largest part, uses state color
+        # --- Draw Abdomen ---
+        # Abdomen is behind the thorax
+        abdomen_offset = int(ant_size * 0.6)
+        abdomen_center = (pos_px[0] - int(move_dir_x * abdomen_offset),
+                          pos_px[1] - int(move_dir_y * abdomen_offset))
+        # Draw abdomen as ellipse
         abdomen_width = max(1, int(abdomen_size * 0.8))
-        abdomen_height = max(1, int(abdomen_size * 1.2)) # Slightly elongated
+        abdomen_height = max(1, int(abdomen_size * 1.2))
         abdomen_rect = pygame.Rect(abdomen_center[0] - abdomen_width // 2,
                                    abdomen_center[1] - abdomen_height // 2,
                                    abdomen_width, abdomen_height)
-        pygame.draw.ellipse(surface, abdomen_color, abdomen_rect)
+        pygame.draw.ellipse(surface, self.return_color, abdomen_rect)  # Changed
 
-        # Draw Thorax (Mesosoma) - middle section, typically small
-        thorax_width = max(1, int(thorax_size * 1.2)) # Slightly wider than tall
+        # --- Draw Thorax ---
+        # Thorax is the center of the ant
+        thorax_width = max(1, int(thorax_size * 1.2))
         thorax_height = max(1, int(thorax_size * 0.8))
         thorax_rect = pygame.Rect(pos_px[0] - thorax_width // 2,
                                   pos_px[1] - thorax_height // 2,
                                   thorax_width, thorax_height)
-        pygame.draw.ellipse(surface, thorax_color, thorax_rect)
+        pygame.draw.ellipse(surface, self.search_color, thorax_rect)  # Changed
 
-        # Draw Head - circular, darker color
+        # --- Draw Head ---
+        # Head is in front of the thorax
+        head_offset = int(ant_size * 0.6)
+        head_center = (pos_px[0] + int(move_dir_x * head_offset),
+                       pos_px[1] + int(move_dir_y * head_offset))
+        # Draw head as circle
         head_radius = max(1, int(head_size / 2))
-        pygame.draw.circle(surface, head_color, head_center, head_radius)
+        head_color = tuple(max(0, c - 40) for c in self.search_color[:3])  # Darken color
+        pygame.draw.circle(surface, head_color, head_center, head_radius)  # Changed
 
         # --- Draw Antennae ---
-        antenna_base_pos = head_center # Antennae originate from the head
-        antenna_length = int(head_size * 1.2) # Length relative to head size
-        # Angle offset from the main direction vector
-        antenna_angle_offset = 0.52 # Radians (approx 30 degrees each side)
-        # Angle of the ant's body orientation
-        body_angle = math.atan2(norm_dy, norm_dx)
+        # Antennae start at the head
+        antenna_base_pos = head_center
+        antenna_length = int(head_size * 1.2)
+        antenna_angle_offset = 0.52  # Radians (about 17 degrees)
 
-        # Calculate end positions for left and right antennae
+        # Calculate antenna end positions
         # Left antenna
-        antenna_left_angle = body_angle - antenna_angle_offset # Subtract offset for left
+        antenna_left_angle = math.atan2(move_dir_y, move_dir_x) + antenna_angle_offset
         antenna_left_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_left_angle)),
                             antenna_base_pos[1] + int(antenna_length * math.sin(antenna_left_angle)))
         # Right antenna
-        antenna_right_angle = body_angle + antenna_angle_offset # Add offset for right
+        antenna_right_angle = math.atan2(move_dir_y, move_dir_x) - antenna_angle_offset
         antenna_right_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_right_angle)),
                              antenna_base_pos[1] + int(antenna_length * math.sin(antenna_right_angle)))
 
-        # Draw antennae lines (1 pixel thick)
-        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)
-        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)
+        # Draw antennae lines
+        antenna_color = head_color  # Dark gray
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)  # Changed
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)  # Changed
 
     def _update_state(self):
         """
@@ -3897,6 +3867,97 @@ class Queen:
             # The actual simulation end logic is handled in AntSimulation.kill_queen
             # based on this flag or direct HP check.
             # print(f"Queen marked as dying at {self.pos}") # Optional debug
+
+    def draw(self, surface: pygame.Surface):
+        """Draws the queen ant onto the given surface, resembling other ants but larger."""
+        sim = self.simulation
+        cs = sim.cell_size
+        # Calculate center pixel position (basis for relative positioning)
+        pos_px = (int(self.pos[0] * cs + cs / 2),
+                  int(self.pos[1] * cs + cs / 2))
+
+        # --- Queen Size Factors (Analog zu Ant Attributes) ---
+        # Königin ist größer, also kleinerer size_factor
+        queen_size_factor = 1.3 # Kleinere Zahl = größere Ameise im Verhältnis zur Zelle
+        # Kopf ist relativ zum Körper vielleicht etwas kleiner als bei Soldaten
+        queen_head_size_factor = 0.35
+
+        # --- Calculate Body Part Sizes ---
+        # Overall size of the queen
+        queen_size = max(3, int(cs / queen_size_factor)) # Größer als normale Ameise
+        # Calculate sizes of body parts relative to queen_size
+        head_size = int(queen_size * queen_head_size_factor)
+        thorax_size = int(queen_size * 0.25) # Etwas größerer Thorax als Standardameise
+        abdomen_size = int(queen_size * 0.8) # Deutlich größeres Abdomen
+
+        # --- Define Fixed Orientation (Queen faces up) ---
+        move_dir_x, move_dir_y = 0, -1
+
+        # --- Calculate Body Part Positions (Relative to Thorax Center = pos_px) ---
+        thorax_center = pos_px
+
+        # Abdomen is behind (downwards)
+        # Größerer Offset wegen des größeren Abdomens
+        abdomen_offset = int(queen_size * 0.6) # Weiter nach hinten versetzt
+        abdomen_center = (thorax_center[0] - int(move_dir_x * abdomen_offset),
+                          thorax_center[1] - int(move_dir_y * abdomen_offset))
+
+        # Head is in front (upwards)
+        head_offset = int(thorax_size * 0.7) # Kopf direkt vor Thorax
+        head_center = (thorax_center[0] + int(move_dir_x * head_offset),
+                       thorax_center[1] + int(move_dir_y * head_offset))
+
+        # --- Draw Abdomen (Large and Elongated) ---
+        abdomen_width = max(2, int(abdomen_size * 0.7))
+        abdomen_height = max(3, int(abdomen_size * 1.1)) # Etwas breiter als hoch
+        abdomen_rect = pygame.Rect(abdomen_center[0] - abdomen_width // 2,
+                                   abdomen_center[1] - abdomen_height // 2,
+                                   abdomen_width, abdomen_height)
+        # Verwende die Hauptfarbe der Königin
+        pygame.draw.ellipse(surface, self.color, abdomen_rect)
+
+        # --- Draw Thorax ---
+        thorax_width = max(1, int(thorax_size * 1.1))
+        thorax_height = max(1, int(thorax_size * 0.9))
+        thorax_rect = pygame.Rect(thorax_center[0] - thorax_width // 2,
+                                  thorax_center[1] - thorax_height // 2,
+                                  thorax_width, thorax_height)
+        # Etwas dunklerer Thorax? Oder gleiche Farbe. Nehmen wir etwas dunkler.
+        thorax_color = tuple(max(0, c - 20) for c in self.color[:3])
+        pygame.draw.ellipse(surface, thorax_color, thorax_rect)
+
+        # --- Draw Head ---
+        head_radius = max(1, int(head_size / 2))
+        # Dunklerer Kopf
+        head_color = tuple(max(0, c - 40) for c in self.color[:3])
+        pygame.draw.circle(surface, head_color, head_center, head_radius)
+
+        # --- Draw Antennae (wie bei Ant.draw) ---
+        antenna_base_pos = head_center
+        antenna_length = int(head_size * 1.3) # Längere Fühler
+        antenna_angle_offset = 0.6 # Weiter gespreizt
+
+        # Berechne Fühler-Endpunkte basierend auf Ausrichtung
+        # Linker Fühler
+        antenna_left_angle = math.atan2(move_dir_y, move_dir_x) + antenna_angle_offset
+        antenna_left_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_left_angle)),
+                            antenna_base_pos[1] + int(antenna_length * math.sin(antenna_left_angle)))
+        # Rechter Fühler
+        antenna_right_angle = math.atan2(move_dir_y, move_dir_x) - antenna_angle_offset
+        antenna_right_end = (antenna_base_pos[0] + int(antenna_length * math.cos(antenna_right_angle)),
+                             antenna_base_pos[1] + int(antenna_length * math.sin(antenna_right_angle)))
+
+        # Zeichne Fühlerlinien
+        antenna_color = head_color # Gleiche Farbe wie Kopf
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_left_end, 1)
+        pygame.draw.line(surface, antenna_color, antenna_base_pos, antenna_right_end, 1)
+
+        # --- Outline (Optional, aber gut für Sichtbarkeit) ---
+        outline_color = (50, 50, 50) # Dunkelgrau
+        pygame.draw.ellipse(surface, outline_color, abdomen_rect, 1)
+        pygame.draw.ellipse(surface, outline_color, thorax_rect, 1)
+        pygame.draw.circle(surface, outline_color, head_center, head_radius, 1)
+
 
 # --- Enemy Class ---
 class Enemy:
@@ -6487,6 +6548,7 @@ class AntSimulation:
         # Draw enemies, prey, and ants on top of the grid and static elements.
         # The individual draw methods handle invalid positions.
         try:
+            self._draw_queen()
             self._draw_enemies()
             self._draw_prey()
             self._draw_ants() # Ants drawn last to appear on top
@@ -6765,37 +6827,9 @@ class AntSimulation:
                 # Attempt to continue drawing other items
 
     def _draw_queen(self):
-        """
-        Draws the queen ant onto the main screen surface.
 
-        Checks if the queen exists and is at a valid position. Draws her as a
-        distinctly colored circle, potentially larger than regular ants, with an outline.
-        """
-        # Check if the queen object exists and her position is valid
-        if not self.queen or not is_valid_pos(self.queen.pos, self.grid_width, self.grid_height):
-            return # Don't draw if no queen or invalid position
-
-        cs = self.cell_size # Local alias for cell size
-
-        # Calculate the center pixel coordinates for drawing
-        pos_px = (int(self.queen.pos[0] * cs + cs / 2),
-                  int(self.queen.pos[1] * cs + cs / 2))
-
-        # Determine drawing radius relative to cell size
-        # Make the queen slightly larger than a standard worker ant might be drawn
-        # Example: Use a smaller size_factor (like 1.4) for the queen compared to workers.
-        # Or set a fixed radius relative to cell size.
-        radius = max(2, int(cs / 1.4)) # Ensure minimum radius of 2 pixels
-
-        try:
-            # Draw the main circle for the queen using her specific color
-            pygame.draw.circle(self.screen, self.queen.color, pos_px, radius)
-
-            # Draw an outline (e.g., white, 1 pixel thick) for better visibility
-            pygame.draw.circle(self.screen, (255, 255, 255), pos_px, radius, 1)
-        except Exception as e:
-            # Catch potential errors during drawing (e.g., invalid color, radius)
-            print(f"ERROR: Failed to draw queen at {self.queen.pos}: {e}")
+        if self.queen and is_valid_pos(self.queen.pos, self.grid_width, self.grid_height):
+            self.queen.draw(self.screen)
 
     def _draw_ants(self):
         """
