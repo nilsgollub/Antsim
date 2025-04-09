@@ -1,12 +1,12 @@
 # Standard Library Imports
-import sys
+import io
+import math
 import os
 import random
-import math
-import time
-import io
-import traceback
+import sys
 import threading
+import time
+import traceback
 from enum import Enum, auto
 
 # Third-Party Imports
